@@ -1,0 +1,50 @@
+{
+  "name": "deliveroo-agents",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "license": "MIT",
+  "contributors": [
+    {
+      "name": "Mauro Antonio de Palma",
+      "email": "mauroantonio.depalma@studenti.unitn.it"
+    },
+    {
+      "name": "Marco Crespi",
+      "email": "mauro.crespi@studenti.unitn.it"
+    }
+  ],
+  "scripts": {
+    "build": "tsx esbuild.config.ts",
+    "start": "node dist/main.js",
+    "start:dev": "npm run build && npm run start",
+    "pre-commit": "bione ci src/",
+    "lint": "biome check src/",
+    "lint-fix": "biome check --write src/"
+  },
+  "dependencies": {
+    "command-line-args": "^6.0.1",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.4.7",
+    "extensionless": "^1.9.9",
+    "fs": "^0.0.1-security",
+    "graphology": "^0.26.0",
+    "keypress": "^0.2.1",
+    "socket.io-client": "^4.6.1",
+    "workerpool": "^9.2.0"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.27.0",
+    "@babel/core": "^7.26.10",
+    "@babel/preset-env": "^7.26.9",
+    "@biomejs/biome": "^1.9.4",
+    "@node-loader/extensionless": "^1.1.1",
+    "@types/command-line-args": "^5.2.3",
+    "@types/node": "^22.13.14",
+    "esbuild": "^0.25.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

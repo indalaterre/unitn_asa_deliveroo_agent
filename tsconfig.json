@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "module": "esnext",
+    "target": "es2020",
+    "outDir": "tmp_dist",
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "@utils/*": ["src/utils/*"],
+      "@domain/*": ["src/domain/*"]
+    }
+  }
+}
