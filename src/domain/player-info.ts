@@ -8,6 +8,10 @@ export class PlayerInfo {
     constructor(
         public readonly id: IdAware,
         public readonly name: string,
-        public readonly position: Position,
+        public position: Position,
     ) {}
+
+    public toPddlSting(): string{
+        return `(at ${this.position.toPddlString()})`
+    }
 }

@@ -1,4 +1,5 @@
 import type { Parcel } from "@domain/models";
+import { Position } from "@domain/models/environment";
 
 /**
  * Define the sensor methods
@@ -14,4 +15,10 @@ export interface Sensor {
      * @callback callback   the method to be executed
      */
     onParcelDetected(callback: (parcels: Parcel[]) => void): void;
+
+    /**
+     * 
+     * @param callback the method to be executed
+     */
+    onPlayerPositionUpdate(callback: (position: Position) => void): void;
 }

@@ -26,6 +26,31 @@ export class Tile {
         public readonly delivery: boolean,
         public readonly position: Position,
     ) {}
+
+    public toString(): string{
+        return `Position: ${this.position}, is delivery: ${this.delivery}, is spawner: ${this.spawner}`
+    }
+
+    public pddlSerialize(): string {
+        return `tile_${this.position.toPddlString()}`
+    }
+
+    static pddlDeserialize(serializedTile: string): Tile {
+        
+        let result = null;
+
+        try{
+            let splits = serializedTile.split("_");
+            let row = Number.parseInt(splits[1]);
+            let column = Number.parseInt(splits[2]);
+
+            result = new Tile(false, false, new Position(row, column));
+        } catch {
+            // TODO: do something ???
+        }
+
+        return result;
+    }
 }
 
 /**
@@ -68,6 +93,10 @@ export class Position {
 
     toString(): string {
         return `X: ${this.row}; Y: ${this.column}`;
+    }
+
+    public toPddlString(): string {
+        return `${this.row}_${this.column}`
     }
 
     /**

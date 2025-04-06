@@ -8,16 +8,16 @@ export class Parcel extends IdAware {
     /**
      *
      * @param id        the parcel id
-     * @param _agentId   the agent which owns the parcel (if any)
-     * @param _position  the parcel position
-     * @param _score     the parcel initial score
+     * @param agentId   the agent which owns the parcel (if any)
+     * @param position  the parcel position
+     * @param score     the parcel initial score
      *
      */
     constructor(
-        id: string,
-        private readonly _agentId: IdAware,
-        private readonly _position: Position,
-        private readonly _score: DecayingValue,
+        public readonly id: string,
+        public readonly agentId: IdAware,
+        public readonly position: Position,
+        public readonly score: DecayingValue,
     ) {
         super(id);
     }
@@ -26,13 +26,13 @@ export class Parcel extends IdAware {
      * @returns TRUE if the package score is 0 or less
      */
     get expired(): boolean {
-        return this._score.getCurrentValue() <= 0;
+        return this.score.getCurrentValue() <= 0;
     }
 
     /**
      * @returns the score of the parcel at current time
      */
     get currentScore(): number {
-        return this._score.getCurrentValue();
+        return this.score.getCurrentValue();
     }
 }

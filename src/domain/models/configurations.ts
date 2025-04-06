@@ -26,6 +26,18 @@ export interface CryptoConfiguration {
     publicPath: string;
 }
 
+export interface PddlConfiguration {
+    /**
+     * The host to the pddl server.
+     */
+    host: string;
+
+    /**
+     * 
+     */
+    pass_path: string;
+}
+
 export interface AgentConfiguration {
     /**
      * The Deliveroo.js host
@@ -41,6 +53,11 @@ export interface AgentConfiguration {
      * Stores the paths for the keys pair used to protect agents communication
      */
     cryptoKeyPaths: CryptoConfiguration;
+
+    /**
+     * Stores the host and and pass path to query the pddl online server
+     */
+    pddlConfiguration: PddlConfiguration;
 }
 
 export class GameConfiguration {

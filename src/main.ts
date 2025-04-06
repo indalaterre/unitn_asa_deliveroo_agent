@@ -9,6 +9,7 @@ import {
     type AgentConfiguration,
     type CryptoConfiguration,
     GameConfiguration,
+    type PddlConfiguration,
 } from "@domain/models/configurations";
 import { Player } from "@domain/player";
 
@@ -27,6 +28,8 @@ function getConfiguration(): AgentConfiguration {
         { name: "gaussian-std", type: Number },
         { name: "discount-factor", type: Number },
         { name: "use-pddl", type: Boolean },
+        { name: "pddl-host", type: String},
+        { name: "pddl-paas-path", type: String}
     ];
 
     const defaultValues = new Map<string, number | boolean>();
@@ -71,6 +74,10 @@ function getConfiguration(): AgentConfiguration {
             publicPath: config.get("public-key") as string,
             privatePath: config.get("private-key") as string,
         } as CryptoConfiguration,
+        pddlConfiguration: {
+            host: config.get("pddl-host") as string,
+            pass_path: config.get("pddl-paas-path") as string,
+        } as PddlConfiguration,
     } as AgentConfiguration;
 }
 
@@ -85,7 +92,7 @@ async function main(): Promise<void> {
         client.getPlayerInfo(),
         client.getFreeTiles(),
         client.loadConfiguration(),
-        client.detectParcels(),
+        client.detectParcels()
     ]);
 
     GameConfiguration.init(envConfig);
@@ -95,17 +102,15 @@ async function main(): Promise<void> {
     const player = new Player(
         mathMap,
         initialParcels,
-        gameConfiguration.cryptoKeyPaths,
-
         client as Sensor,
         client as Actuator,
         playerInfo,
+        gameConfiguration.cryptoKeyPaths,
         null,
+        gameConfiguration.pddlConfiguration,
     );
 
-    console.log(
-        `Player ID is: ${playerInfo.id}, Name: ${playerInfo.name}; Initial position: ${playerInfo.position}`,
-    );
+    console.log(`Player ID is: ${playerInfo.id}, Name: ${playerInfo.name}; Initial position: ${playerInfo.position}`);
 
     await player.start();
 }

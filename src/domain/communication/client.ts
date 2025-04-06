@@ -21,6 +21,7 @@ export class SocketClient implements Actuator, Information, Sensor {
     }
 
     move(direction: Directions): Promise<boolean> {
+
         if (direction === Directions.NONE) {
             return Promise.resolve(true);
         }
@@ -66,6 +67,12 @@ export class SocketClient implements Actuator, Information, Sensor {
             });
 
             callback(parcels);
+        });
+    }
+
+    onPlayerPositionUpdate(callback: (position: Position) => void): void {
+        this._socket.on("you", (player) => {
+            callback(new Position(player.x, player.y));
         });
     }
 

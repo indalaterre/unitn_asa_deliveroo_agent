@@ -9,15 +9,41 @@ export class BeliefContainer {
      * @private
      */
     private _ownPosition: Position;
+    public parcels: Map<string, Parcel>;
 
     constructor(
         info: PlayerInfo,
-        private readonly map: MatchMap,
+        public readonly map: MatchMap,
     ) {
         this._ownPosition = info.position;
+        this.parcels = new Map();
+
+        setInterval(() => this._discardExpiredParcels(), 10000);
     }
 
     synchronizeKnownParcels(parcels: Parcel[]) {
-        const a = 1;
+        for (const parcel of parcels){
+            this.parcels.set(parcel.id, parcel);
+        }
+    }
+
+    synchronizeOwnPosition(ownPosition: Position) {
+        this._ownPosition = ownPosition;
+    }
+
+    private _discardExpiredParcels(){
+
+        let parcelsToRemove: Parcel[] = [];
+
+        for (const [id, parcel] of this.parcels.entries()){
+            if (parcel.expired){
+                parcelsToRemove.push(parcel);
+            }
+        }
+
+        for (const parcel of parcelsToRemove){
+            this.parcels.delete(parcel.id);
+        }
+
     }
 }

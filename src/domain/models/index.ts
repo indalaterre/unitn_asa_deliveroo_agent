@@ -4,4 +4,6 @@ export {
     AgentConfiguration,
     EnvironmentConfiguration,
     CryptoConfiguration,
+    GameConfiguration,
+    PddlConfiguration,
 } from "./configurations";
