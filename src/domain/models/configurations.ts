@@ -33,7 +33,7 @@ export interface PddlConfiguration {
     host: string;
 
     /**
-     * 
+     *
      */
     pass_path: string;
 }
@@ -55,7 +55,7 @@ export interface AgentConfiguration {
     cryptoKeyPaths: CryptoConfiguration;
 
     /**
-     * Stores the host and and pass path to query the pddl online server
+     * Stores the host and pass path to query the pddl online server
      */
     pddlConfiguration: PddlConfiguration;
 }
@@ -76,5 +76,9 @@ export class GameConfiguration {
 
     static get movementDuration(): Duration {
         return GameConfiguration._instance._environmentConfiguration.movementDuration;
+    }
+
+    static get parcelVisibilityDistance(): number {
+        return GameConfiguration._instance._environmentConfiguration.parcelVisibilityDistance;
     }
 }

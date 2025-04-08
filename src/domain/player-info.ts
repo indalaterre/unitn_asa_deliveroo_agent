@@ -11,7 +11,7 @@ export class PlayerInfo {
         public position: Position,
     ) {}
 
-    public toPddlSting(): string{
-        return `(at ${this.position.toPddlString()})`
+    public toPddlSting(): string {
+        return `(at ${this.position.toPddlString()})`;
     }
 }

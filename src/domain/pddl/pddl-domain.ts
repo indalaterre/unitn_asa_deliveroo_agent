@@ -1,7 +1,6 @@
 import { readFileSync } from "fs";
 
 export class PddlDomain {
-
     /**
      * Path to the pddl domain file.
      */
@@ -16,9 +15,9 @@ export class PddlDomain {
      * @param {string} pddl_file_path path to the pddl domain file.
      * @param {boolean} read_file reads the file at the path indicated when the object is instantiated.
      */
-    constructor(pddl_file_path: string, read_file: boolean = true){
+    constructor(pddl_file_path: string, read_file = true) {
         this.pddl_file_path = pddl_file_path;
-        if (read_file){
+        if (read_file) {
             this.pddl_domain = readFileSync(this.pddl_file_path, "utf-8");
         }
     }

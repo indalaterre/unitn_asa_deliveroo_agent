@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Hashable } from "@utils/interfaces";
 
 /**
  * Enumerates the possible directions
@@ -27,22 +28,21 @@ export class Tile {
         public readonly position: Position,
     ) {}
 
-    public toString(): string{
-        return `Position: ${this.position}, is delivery: ${this.delivery}, is spawner: ${this.spawner}`
+    public toString(): string {
+        return `Position: ${this.position}, is delivery: ${this.delivery}, is spawner: ${this.spawner}`;
     }
 
     public pddlSerialize(): string {
-        return `tile_${this.position.toPddlString()}`
+        return `tile_${this.position.toPddlString()}`;
     }
 
     static pddlDeserialize(serializedTile: string): Tile {
-        
         let result = null;
 
-        try{
-            let splits = serializedTile.split("_");
-            let row = Number.parseInt(splits[1]);
-            let column = Number.parseInt(splits[2]);
+        try {
+            const splits = serializedTile.split("_");
+            const row = Number.parseInt(splits[1]);
+            const column = Number.parseInt(splits[2]);
 
             result = new Tile(false, false, new Position(row, column));
         } catch {
@@ -56,7 +56,7 @@ export class Tile {
 /**
  * Models a position in the map implementing some utility methods
  */
-export class Position {
+export class Position implements Hashable {
     private cachedHashCode: string;
 
     /**
@@ -69,11 +69,21 @@ export class Position {
     ) {}
 
     /**
+     * Computes the manhattan distance between this position and the other position.
+     * @param from  the starting position
+     * @param to    the goal destination
+     * @returns The manhattan distance between this position and the other position.
+     */
+    static manhattanDistance(from: Position, to: Position): number {
+        return from.manhattanDistance(to);
+    }
+
+    /**
      * @param other the position to compare
      * @returns TRUE if the two positions share same rows/columns coordinates
      */
     equals(other: Position): boolean {
-        return this.row === other.row && this.column === other.column;
+        return this.row === other?.row && this.column === other?.column;
     }
 
     /**
@@ -91,12 +101,21 @@ export class Position {
         return this.cachedHashCode;
     }
 
+    /**
+     * Computes the manhattan distance between this position and the other position.
+     * @param other The other position.
+     * @returns The manhattan distance between this position and the other position.
+     */
+    manhattanDistance(other: Position): number {
+        return Math.abs(this.row - other.row) + Math.abs(this.column - other.column);
+    }
+
     toString(): string {
         return `X: ${this.row}; Y: ${this.column}`;
     }
 
     public toPddlString(): string {
-        return `${this.row}_${this.column}`
+        return `${this.row}_${this.column}`;
     }
 
     /**
@@ -115,6 +134,22 @@ export class Position {
             default:
                 return new Position(this.row, this.column);
         }
+    }
+
+    /**
+     * @param to    the goal position
+     * @returns     the direction the move must follow to reach the goal position
+     */
+    getDirection(to: Position): Directions | null {
+        const dx = to.row - this.row;
+        const dy = to.column - this.column;
+
+        if (dx === 0 && dy === 1) return Directions.UP;
+        if (dx === 0 && dy === -1) return Directions.DOWN;
+        if (dx === -1 && dy === 0) return Directions.LEFT;
+        if (dx === 1 && dy === 0) return Directions.RIGHT;
+
+        return null; // not a direct neighbor
     }
 
     /**
@@ -145,8 +180,3 @@ export class Position {
         return new Position(row, column);
     }
 }
-
-/**
- * Models the map information of the current match
- */
-export class GridMap {}

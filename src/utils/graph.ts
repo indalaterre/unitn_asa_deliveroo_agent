@@ -1,12 +1,32 @@
 import path from "node:path";
 import workerpool from "workerpool";
 
-import type { Tile } from "@domain/models/environment";
+import { Position, type Tile } from "@domain/models/environment";
+import { HashMap } from "@utils/hashmap";
 import { UndirectedGraph } from "graphology";
+import PriorityQueue from "priority-queue-typescript";
 
 interface Edge {
     weight: number;
+    neighbor: boolean;
 }
+
+/**
+ * Interface used for the priority queue of the A*
+ */
+interface PositionWithScore {
+    /**
+     * The position score
+     */
+    score: number;
+
+    /**
+     * The position instance
+     */
+    position: Position;
+}
+
+export type AStarHeuristicFn = (from: Position, end: Position) => number;
 
 export class Graph extends UndirectedGraph<Tile, Edge> {
     /**
@@ -23,13 +43,14 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
         //Creating connection between each adjacent node
         graph.forEachNode((tileHash: string, tile: Tile) => {
             for (const adj of tile.position.adjacent) {
-                if (!graph.hasNode(adj.hashCode()) || graph.hasUndirectedEdge(tileHash, adj.hashCode())) {
+                if (
+                    !graph.hasNode(adj.hashCode()) ||
+                    graph.hasUndirectedEdge(tileHash, adj.hashCode())
+                ) {
                     continue;
                 }
 
-                graph.addUndirectedEdge(tileHash, adj.hashCode(), {
-                    weight: 1,
-                });
+                graph.addUndirectedEdge(tileHash, adj.hashCode(), { weight: 1, neighbor: true });
             }
         });
 
@@ -62,6 +83,7 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                 for (const [j, neighbor] of nodes.entries()) {
                     if (!graph.hasUndirectedEdge(node, neighbor)) {
                         graph.addUndirectedEdge(node, neighbor, {
+                            neighbor: false,
                             weight: distance[i][j],
                         });
                     }
@@ -73,7 +95,78 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
     }
 
     getDistance(nodeA: string, nodeB: string): number {
-        return this.getEdgeAttribute(nodeA, nodeB, "weight");
+        return this.getEdgeAttribute(nodeA, nodeB, "weight") ?? 1;
+    }
+
+    isNeighbor(nodeA: string, nodeB: string): boolean {
+        return this.getEdgeAttribute(nodeA, nodeB, "neighbor") ?? false;
+    }
+
+    getNeighborDistance(nodeA: string, nodeB: string): number {
+        return this.getEdgeAttribute(nodeA, nodeB, "weight") ?? 1;
+    }
+
+    calculatePathWithAStar(
+        start: Position,
+        end: Position,
+        heuristic: AStarHeuristicFn = Position.manhattanDistance,
+    ): Position[] {
+        const gScore: HashMap<Position, number> = new HashMap();
+        gScore.set(start, 0);
+
+        const fScore: HashMap<Position, number> = new HashMap();
+        fScore.set(start, heuristic(start, end));
+
+        const pathMap: HashMap<Position, Position> = new HashMap();
+
+        const priority: PriorityQueue<PositionWithScore> = new PriorityQueue(
+            1,
+            (a: PositionWithScore, b: PositionWithScore) => a.score - b.score,
+        );
+        priority.add({ position: start, score: fScore.get(start) });
+
+        while (priority.size() > 0) {
+            const current: PositionWithScore = priority.poll();
+
+            if (current.position.equals(end)) {
+                const path: Position[] = [];
+
+                let position: Position = current.position;
+                while (position) {
+                    path.unshift(position);
+                    position = pathMap.get(position);
+                }
+
+                return path;
+            }
+
+            //Recalculating all G-Scores
+            const currentHashCode = current.position.hashCode();
+            this.forEachNeighbor(currentHashCode, (neighbor: string, tile: Tile) => {
+                if (!this.isNeighbor(currentHashCode, neighbor)) {
+                    return;
+                }
+
+                const tentativeGScore =
+                    //We use Infinity as an edge case for g-scores not present in the map
+                    //In this situation we were not able to calculate the score meaning that there is not way to reach
+                    //  this node
+                    (gScore.get(current.position) ?? Number.POSITIVE_INFINITY) +
+                    this.getDistance(currentHashCode, neighbor);
+
+                if (tentativeGScore < (gScore.get(tile.position) ?? Number.POSITIVE_INFINITY)) {
+                    gScore.set(tile.position, tentativeGScore);
+                    pathMap.set(tile.position, current.position);
+
+                    const f = heuristic(tile.position, end) + tentativeGScore;
+                    fScore.set(tile.position, f);
+
+                    priority.add({ position: tile.position, score: f });
+                }
+            });
+        }
+
+        return null;
     }
 
     /*
@@ -94,7 +187,7 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                 if (visitedNodes.has(currentNode)) continue;
 
                 visitedNodes.add(currentNode);
-                if(!component.hasNode(currentNode)) {
+                if (!component.hasNode(currentNode)) {
                     component.addNode(currentNode, this.getNodeAttributes(currentNode));
                 }
 

@@ -28,8 +28,8 @@ function getConfiguration(): AgentConfiguration {
         { name: "gaussian-std", type: Number },
         { name: "discount-factor", type: Number },
         { name: "use-pddl", type: Boolean },
-        { name: "pddl-host", type: String},
-        { name: "pddl-paas-path", type: String}
+        { name: "pddl-host", type: String },
+        { name: "pddl-paas-path", type: String },
     ];
 
     const defaultValues = new Map<string, number | boolean>();
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
         client.getPlayerInfo(),
         client.getFreeTiles(),
         client.loadConfiguration(),
-        client.detectParcels()
+        client.detectParcels(),
     ]);
 
     GameConfiguration.init(envConfig);
@@ -110,7 +110,9 @@ async function main(): Promise<void> {
         gameConfiguration.pddlConfiguration,
     );
 
-    console.log(`Player ID is: ${playerInfo.id}, Name: ${playerInfo.name}; Initial position: ${playerInfo.position}`);
+    console.log(
+        `Player ID is: ${playerInfo.id}, Name: ${playerInfo.name}; Initial position: ${playerInfo.position}`,
+    );
 
     await player.start();
 }

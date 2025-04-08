@@ -35,4 +35,15 @@ export class Parcel extends IdAware {
     get currentScore(): number {
         return this.score.getCurrentValue();
     }
+
+    /**
+     * TRUE if the two parcels are identical
+     * @param other the other parcel to compare
+     */
+    equals(other: Parcel): boolean {
+        if (!(other instanceof Parcel)) return false;
+
+        const idEqual = super.equals(other);
+        return idEqual && this.position.equals(other.position);
+    }
 }

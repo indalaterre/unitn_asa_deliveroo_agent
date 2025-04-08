@@ -21,7 +21,6 @@ export class SocketClient implements Actuator, Information, Sensor {
     }
 
     move(direction: Directions): Promise<boolean> {
-
         if (direction === Directions.NONE) {
             return Promise.resolve(true);
         }
@@ -77,7 +76,7 @@ export class SocketClient implements Actuator, Information, Sensor {
     }
 
     loadConfiguration(): Promise<EnvironmentConfiguration> {
-        return new Promise((resolve) => {
+        return new Promise((resolve: (arg0: EnvironmentConfiguration) => void) => {
             this._socket.once("config", (config: any) => {
                 const parsedConfig = {
                     maxParcels: SocketClient.parseNumericConfiguration(config, "PARCELS_MAX"),
@@ -108,7 +107,7 @@ export class SocketClient implements Actuator, Information, Sensor {
     }
 
     getFreeTiles(): Promise<Tile[]> {
-        return new Promise((resolve) => {
+        return new Promise((resolve: (arg0: Tile[]) => void) => {
             this._socket.once("map", (_: number, __: number, tilesData: any[]) => {
                 const tiles = tilesData.map((tile) => {
                     return new Tile(
@@ -123,7 +122,7 @@ export class SocketClient implements Actuator, Information, Sensor {
     }
 
     getPlayerInfo(): Promise<PlayerInfo> {
-        return new Promise((resolve) => {
+        return new Promise((resolve: (arg0: PlayerInfo) => void) => {
             this._socket.once("you", (data: any) => {
                 const info = new PlayerInfo(
                     new IdAware(data.id),
@@ -159,5 +158,35 @@ export class SocketClient implements Actuator, Information, Sensor {
             default:
                 throw new Error(`Invalid key: ${key}`);
         }
+    }
+
+    pickup(): Promise<Set<string>> {
+        return new Promise((resolve, _reject) => {
+            this._socket.emit("pickup", (response: any[]) => {
+                const parcels: Set<string> = new Set<string>();
+                for (const parcel of response) {
+                    parcels.add(parcel.id);
+                }
+
+                resolve(parcels);
+            });
+        });
+    }
+
+    putDown(parcelsToPutDown: string[] | null): Promise<Set<string>> {
+        return new Promise((resolve, _reject) => {
+            if (!parcelsToPutDown?.length) {
+                console.log("No parcels to put down. Action will be ignored");
+            }
+
+            this._socket.emit("putdown", parcelsToPutDown, (response: any[]) => {
+                const putDownParcels: Set<string> = new Set<string>();
+                for (const parcel of response) {
+                    putDownParcels.add(parcel.id);
+                }
+
+                resolve(putDownParcels);
+            });
+        });
     }
 }

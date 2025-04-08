@@ -1,15 +1,14 @@
-import { Position, Directions } from "@domain/models/environment";
 import fs from "fs";
+import { Directions, type Position } from "@domain/models/environment";
 
 export class PddlPlan {
-
     public readonly plan: PddlAction[];
 
-    public constructor(){
+    public constructor() {
         this.plan = [];
     }
 
-    public pushAction(pddlAction: PddlAction){
+    public pushAction(pddlAction: PddlAction) {
         this.plan.push(pddlAction);
     }
 
@@ -19,11 +18,11 @@ export class PddlPlan {
 
     /**
      * Save the pddl problem on file.
-     * 
+     *
      * @param path {string} path where to save the file.
      * @returns {Promise}
      */
-    public async toFile(path: string){
+    public async toFile(path: string) {
         return new Promise((resolve: Function, reject: Function) => {
             fs.writeFile(path, this.toString(), (err) => {
                 if (err) {
@@ -36,7 +35,6 @@ export class PddlPlan {
 }
 
 export class PddlAction {
-
     /**
      * Direction
      */
@@ -52,15 +50,14 @@ export class PddlAction {
      */
     public readonly to: Position;
 
-    public constructor(action: string, from: Position, to: Position){
-
-        if (action === "move_up"){
+    public constructor(action: string, from: Position, to: Position) {
+        if (action === "move_up") {
             this.action = Directions.UP;
-        } else if (action === "move_down"){
+        } else if (action === "move_down") {
             this.action = Directions.DOWN;
-        } else if (action === "move_left"){
+        } else if (action === "move_left") {
             this.action = Directions.LEFT;
-        } else if (action === "move_right"){
+        } else if (action === "move_right") {
             this.action = Directions.RIGHT;
         } else {
             // TODO: wath to do? Directon.NONE
@@ -71,6 +68,6 @@ export class PddlAction {
     }
 
     public toString(): string {
-         return `action: ${this.action}, from: ${this.from}, to: ${this.to}`
+        return `action: ${this.action}, from: ${this.from}, to: ${this.to}`;
     }
 }

@@ -9,7 +9,8 @@
     "allowSyntheticDefaultImports": true,
     "paths": {
       "@utils/*": ["src/utils/*"],
-      "@domain/*": ["src/domain/*"]
+      "@domain/*": ["src/domain/*"],
+      "@planning/*": ["src/planning/*"]
     }
   }
 }
