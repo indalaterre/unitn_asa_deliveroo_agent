@@ -73,6 +73,9 @@ export class Player {
      */
     private async _run(): Promise<void> {
         while (this._isAlive) {
+
+            await new Promise((resolve) => setImmediate(resolve));
+
             if (this._currentExecutingPlan) {
                 const plan = this._currentExecutingPlan as PlanMovingAction;
                 if (plan.intention.type === IntentionTypes.MOVE) {
