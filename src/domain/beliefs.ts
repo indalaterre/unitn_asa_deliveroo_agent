@@ -13,13 +13,16 @@ export class BeliefContainer {
      * @private
      */
     private _ownPosition: Position;
-    public parcels: Map<string, Parcel>;
 
     /**
-     * The ID of the carried parcels (if any)
-     * @private
+     * @private The ID of the carried parcels (if any)
      */
     private _carriedParcelId: string[] = [];
+
+    /**
+     * A map containing how much time a tile have been visited
+     */
+    private visitedTiles: HashMap<Position, number> = new HashMap();
 
     /**
      * An internal event emitter
@@ -52,7 +55,9 @@ export class BeliefContainer {
         public readonly map: MatchMap,
     ) {
         this._ownPosition = info.position;
-        this.parcels = new Map();
+        for (const position of this.map.spawnTilePositions) {
+            this.visitedTiles.set(position, 0);
+        }
     }
 
     /**
@@ -143,9 +148,27 @@ export class BeliefContainer {
         return this.map.distanceFromTheClosestDelivery(this._ownPosition).position;
     }
 
+    findBestExplorationSite(): Position {
+        return this.visitedTiles
+            .entryArray()
+            .map(([position, visits]: [Position, number]) => {
+                const distance: number = this._ownPosition.manhattanDistance(position);
+                return {
+                    position,
+                    distance: 1 / (visits + 1) + distance,
+                } as PositionWithDistance;
+            })
+            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d2.distance - d1.distance)
+            .map((pos: PositionWithDistance) => pos.position)
+            .shift();
+    }
+
     synchronizeMyPosition(position: Position): void {
         this._ownPosition = position;
         this._internalEventsBroken.emit("own-position-changed", position);
+
+        //We can update the map with the visited spawning tiles
+        this.visitedTiles.update(position, (count: number) => (count ?? 0) + 1);
     }
 
     synchronizeKnownParcels(parcels: Parcel[]) {
@@ -265,9 +288,6 @@ export class BeliefContainer {
 
         const knownPosition: Position = parcel.position;
         if (knownPosition.equals(newPosition)) {
-            console.debug(
-                "You are changing the position of a parcel setting the same old one. Skipping...",
-            );
             return false;
         }
 

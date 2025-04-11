@@ -27,22 +27,25 @@ export class Player {
     private _cipher: Cipher;
 
     /**
+     * @private The PDDL engine
+     */
+    private _pddlSolver: PddlSolver;
+
+    /**
      * Contains all the beliefs of the agent
      */
     private readonly _beliefs: BeliefContainer;
-
-    private _pddlSolver: PddlSolver;
 
     /**
      * The plan the agent is currently executing
      * @private
      */
-    private _currentExecutingPlan: Intention | PlanMovingAction;
+    private _currentExecutingPlan: PlanMovingAction;
 
     public constructor(
         matchMap: MatchMap,
         initialParcels: Parcel[],
-        private sensor: Sensor,
+        sensor: Sensor,
         private actuator: Actuator,
         private readonly playerInfo: PlayerInfo,
         cryptoConfiguration: CryptoConfiguration,
@@ -73,70 +76,83 @@ export class Player {
      */
     private async _run(): Promise<void> {
         while (this._isAlive) {
-
             await new Promise((resolve) => setImmediate(resolve));
 
             if (this._currentExecutingPlan) {
-                const plan = this._currentExecutingPlan as PlanMovingAction;
-                if (plan.intention.type === IntentionTypes.MOVE) {
-                    const nextDirection: Directions = (plan.data as Directions[]).shift();
-                    if (nextDirection) {
-                        const nextPosition = this._beliefs.myPosition.moveTo(nextDirection);
-                        console.log(`Moving from: ${this._beliefs.myPosition} to: ${nextPosition}`);
-                        await this.actuator.move(nextDirection);
-                    } else {
-                        //Moving plan has been completed
-                        this._currentExecutingPlan = null;
-                    }
+                await this.goAheadWithChosenPlan();
+            }
+
+            const intention: Intention = this._calculateNextAction(
+                this._currentExecutingPlan?.intention.type === IntentionTypes.EXPLORE,
+            );
+            if (!intention) {
+                continue;
+            }
+
+            console.log(`Chosen intention: ${intention.toString()}`);
+
+            if ([IntentionTypes.MOVE, IntentionTypes.EXPLORE].includes(intention.type)) {
+                if (intention.type === IntentionTypes.EXPLORE) {
+                    const a = 1;
                 }
-            } else {
-                const intention: Intention = this._calculateNextAction();
-                if (!intention) {
-                    continue;
-                }
+                this.calculateShortestPathFromMovingIntention(intention);
+            } else if (intention.type === IntentionTypes.PICK_UP) {
+                // PICKUP case
+                const parcelsPickedUp: Set<string> = await this.actuator.pickup();
 
-                console.log(`Chosen intention: ${intention.toString()}`);
+                console.log(`Parcels: ${parcelsPickedUp} have been picked up`);
+                this._beliefs.carryingParcelIds = Array.from(parcelsPickedUp.values());
+            } else if (intention.type === IntentionTypes.PUT_DOWN) {
+                // PUT DOWN case
+                const parcelsToDrop: string[] = this._beliefs.carryingParcelIds;
+                const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
 
-                if (intention.type === IntentionTypes.MOVE) {
-                    const path: Position[] = this._beliefs.calculateMovingPath(intention.position);
-                    const directions: Directions[] = [];
-
-                    for (let i = 0; i < path.length - 1; i++) {
-                        const direction: Directions = path[i].getDirection(path[i + 1]);
-                        if (direction) {
-                            directions.push(direction);
-                        } else {
-                            throw new Error(`Invalid step from ${path[i]} to ${path[i + 1]}`);
-                        }
-                    }
-
-                    console.log(`Calculate directions to: ${intention.position}:`);
-                    console.log(directions.join(","));
-
-                    this._currentExecutingPlan = {
-                        intention,
-                        data: directions,
-                        to: intention.position,
-                        from: this._beliefs.myPosition,
-                    } as PlanMovingAction;
-                } else if (intention.type === IntentionTypes.PICK_UP) {
-                    const parcelsPickedUp: Set<string> = await this.actuator.pickup();
-
-                    console.log(`Parcels: ${parcelsPickedUp} have been picked up`);
-                    this._beliefs.carryingParcelIds = Array.from(parcelsPickedUp.values());
-                } else {
-                    const parcelsToDrop: string[] = this._beliefs.carryingParcelIds;
-                    const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
-
-                    console.log(`Parcels ${parcelsDropped} have been dropped`);
-                    this._beliefs.updateDroppedParcels(parcelsDropped);
-                    // PUT DOWN case
-                }
+                console.log(`Parcels ${parcelsDropped.toString()} have been dropped`);
+                this._beliefs.updateDroppedParcels(parcelsDropped);
             }
         }
     }
 
-    private _calculateNextAction(): Intention {
+    private calculateShortestPathFromMovingIntention(intention: Intention) {
+        const path: Position[] = this._beliefs.calculateMovingPath(intention.position);
+        const directions: Directions[] = [];
+
+        for (let i = 0; i < path.length - 1; i++) {
+            const direction: Directions = path[i].getDirection(path[i + 1]);
+            if (direction) {
+                directions.push(direction);
+            } else {
+                throw new Error(`Invalid step from ${path[i]} to ${path[i + 1]}`);
+            }
+        }
+
+        console.log(`Calculate directions to: ${intention.position}:`);
+        console.log(directions.join(","));
+
+        this._currentExecutingPlan = {
+            intention,
+            data: directions,
+            to: intention.position,
+            from: this._beliefs.myPosition,
+        } as PlanMovingAction;
+    }
+
+    private async goAheadWithChosenPlan() {
+        const plan = this._currentExecutingPlan as PlanMovingAction;
+        if ([IntentionTypes.MOVE, IntentionTypes.EXPLORE].includes(plan.intention.type)) {
+            const nextDirection: Directions = (plan.data as Directions[]).shift();
+            if (nextDirection) {
+                const nextPosition = this._beliefs.myPosition.moveTo(nextDirection);
+                console.log(`Moving from: ${this._beliefs.myPosition} to: ${nextPosition}`);
+                await this.actuator.move(nextDirection);
+            } else {
+                //Moving plan has been completed
+                this._currentExecutingPlan = null;
+            }
+        }
+    }
+
+    private _calculateNextAction(isExploring: boolean): Intention {
         //TODO: Need to revise the plan in case of changes in parcels or other impediments
 
         //Checking if the agent is carrying something
@@ -163,6 +179,12 @@ export class Player {
                 }
 
                 return Intention.move(bestParcelPosition.position);
+            }
+
+            if (!isExploring) {
+                //Evaluate the best position to explore
+                const explorationSite: Position = this._beliefs.findBestExplorationSite();
+                return Intention.explore(explorationSite);
             }
 
             return null;
@@ -209,6 +231,6 @@ export class Player {
         const newPosition = new Position(new_row, new_column);
 
         this.playerInfo.position = newPosition;
-        this._beliefs.myPosition = newPosition;
+        this._beliefs.synchronizeMyPosition(newPosition);
     }
 }

@@ -31,8 +31,8 @@ export class MatchMap {
         private readonly height: number,
 
         private readonly _graph: Graph,
-        private readonly _delivery: Tile[],
         private readonly _spawn: Tile[],
+        private readonly _delivery: Tile[],
     ) {}
 
     /**
@@ -56,10 +56,14 @@ export class MatchMap {
             .map((tile: Tile) => tile.position.column)
             .reduce((acc: number, curr: number) => Math.max(acc, curr), 0);
 
-        const map = new MatchMap(width, height, graph, deliveryTiles, spawnTiles);
+        const map = new MatchMap(width, height, graph, spawnTiles, deliveryTiles);
         map._buildAdjacencyMatrix(tiles);
 
         return map;
+    }
+
+    get spawnTilePositions(): Position[] {
+        return this._spawn.map((tile: Tile) => tile.position);
     }
 
     public getTiles(): Tile[] {

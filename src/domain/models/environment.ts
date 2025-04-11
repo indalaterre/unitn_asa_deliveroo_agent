@@ -16,7 +16,7 @@ export enum Directions {
 /**
  * Models a tile (the map unit component)
  */
-export class Tile {
+export class Tile implements Hashable {
     /**
      * @param position the tile position
      * @param delivery TRUE if the tile is a delivery position
@@ -28,8 +28,18 @@ export class Tile {
         public readonly position: Position,
     ) {}
 
+    /**
+     * ToString method
+     */
     public toString(): string {
         return `Position: ${this.position}, is delivery: ${this.delivery}, is spawner: ${this.spawner}`;
+    }
+
+    /**
+     * The hashCode method
+     */
+    public hashCode(): string {
+        return this.position?.hashCode();
     }
 
     public pddlSerialize(): string {

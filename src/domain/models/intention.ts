@@ -5,6 +5,8 @@ export enum IntentionTypes {
     MOVE = 0,
     PICK_UP = 1,
     PUT_DOWN = 2,
+
+    EXPLORE = 3,
 }
 
 export class Intention implements Hashable {
@@ -19,6 +21,14 @@ export class Intention implements Hashable {
      */
     static move(position: Position): Intention {
         return new Intention(IntentionTypes.MOVE, position);
+    }
+
+    /**
+     * Generates an EXPLORE intention for the position
+     * @param position
+     */
+    static explore(position: Position): Intention {
+        return new Intention(IntentionTypes.EXPLORE, position);
     }
 
     /**

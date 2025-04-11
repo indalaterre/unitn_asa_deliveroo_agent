@@ -35,6 +35,18 @@ export class HashMap<K extends Hashable, V> {
         this._map.set(key.hashCode(), [key, value]);
     }
 
+    /**
+     * Updates the value linked to the key
+     * @param key               the value key
+     * @param updateFunction    the updating function
+     */
+    public update(key: K, updateFunction: (value: V) => V): V {
+        const updatedValue: V = updateFunction(this.get(key));
+        this.set(key, updatedValue);
+
+        return updatedValue;
+    }
+
     public setAll(pairs: [K, V][]): void {
         for (const [key, value] of pairs) {
             this.set(key, value);
@@ -55,6 +67,10 @@ export class HashMap<K extends Hashable, V> {
 
     public entries(): IterableIterator<[K, V]> {
         return this._map.values();
+    }
+
+    public entryArray(): [K, V][] {
+        return Array.from(this._map.values());
     }
 
     public *values(): IterableIterator<V> {
