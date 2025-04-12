@@ -153,42 +153,50 @@ export class Player {
     }
 
     private _calculateNextAction(isExploring: boolean): Intention {
-        //TODO: Need to revise the plan in case of changes in parcels or other impediments
-
         //Checking if the agent is carrying something
-        const isCarrying = this._beliefs.isCarrying;
+        const isCarrying: boolean = this._beliefs.isCarrying;
         if (isCarrying) {
-            const closestDelivery = this._beliefs.findBestDelivery();
+            //TODO: this part could be optimized
+            const closestDelivery: Position = this._beliefs.findBestDelivery();
             if (closestDelivery?.equals(this._beliefs.myPosition)) {
-                //TODO: Add the logic to manage no carried parcels. We must start the exploration
                 return Intention.putDown(closestDelivery);
             }
 
-            return Intention.move(closestDelivery);
-        } else {
-            /*
-                We need to calculate the best parcel to be taken.
-                The idea is to choose the one with the best agent-parcel-delivery distance
-
-             */
-            const bestParcelPosition: PositionWithDistance = this._beliefs.bestParcelToDeliver;
-            if (bestParcelPosition) {
-                if (this._beliefs.myPosition?.equals(bestParcelPosition?.position)) {
-                    //We can pickup the parcel
-                    return Intention.pickUp(bestParcelPosition.position);
+            //Let's check if we have good parcels nearby
+            const newParcel: Position =
+                this._beliefs.findAdditionalParcelWorthToKeep(closestDelivery);
+            if (newParcel) {
+                if (newParcel.equals(this._beliefs.myPosition)) {
+                    return Intention.pickUp(newParcel);
+                } else {
+                    Intention.move(newParcel);
                 }
-
-                return Intention.move(bestParcelPosition.position);
+            } else {
+                return Intention.move(closestDelivery);
             }
-
-            if (!isExploring) {
-                //Evaluate the best position to explore
-                const explorationSite: Position = this._beliefs.findBestExplorationSite();
-                return Intention.explore(explorationSite);
-            }
-
-            return null;
         }
+
+        /*
+            We need to calculate the best parcel to be taken.
+            The idea is to choose the one with the best agent-parcel-delivery distance
+        */
+        const bestParcelPosition: PositionWithDistance = this._beliefs.bestParcelToDeliver;
+        if (bestParcelPosition) {
+            if (this._beliefs.myPosition?.equals(bestParcelPosition?.position)) {
+                //We can pickup the parcel
+                return Intention.pickUp(bestParcelPosition.position);
+            }
+
+            return Intention.move(bestParcelPosition.position);
+        }
+
+        if (!isExploring) {
+            //Evaluate the best position to explore
+            const explorationSite: Position = this._beliefs.findBestExplorationSite();
+            return Intention.explore(explorationSite);
+        }
+
+        return null;
     }
 
     updateKnownParcels(parcels: Parcel[]) {

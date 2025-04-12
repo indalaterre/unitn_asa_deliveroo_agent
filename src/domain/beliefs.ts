@@ -148,6 +148,36 @@ export class BeliefContainer {
         return this.map.distanceFromTheClosestDelivery(this._ownPosition).position;
     }
 
+    findAdditionalParcelWorthToKeep(delivery: Position): Position {
+        //TODO: We need the logic to handle the movement time and the decay (when different than 1s)
+        const distanceFromDelivery: number = this._ownPosition.manhattanDistance(delivery);
+        const freeParcel: Parcel = Array.from(this.freeParcelsById.values())
+            .map((parcel: Parcel) => {
+                return {
+                    context: parcel,
+                    position: parcel.position,
+                    distance: parcel.position.manhattanDistance(this._ownPosition),
+                } as PositionWithDistance;
+            })
+            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
+            .map((d: PositionWithDistance) => d.context as Parcel)
+            .shift();
+
+        if (!freeParcel) {
+            return null;
+        }
+
+        //TODO: Need to improve this logic. Must only consider the cost of the deviation
+        const candidateScore: number = freeParcel.currentScore;
+        const parcelCost: number =
+            freeParcel.position.manhattanDistance(this._ownPosition) +
+            freeParcel.position.manhattanDistance(delivery);
+
+        const worthScore: number = candidateScore - parcelCost;
+        //The parcel is worth to be considered. We need to check if there is a closer deliver
+        return worthScore <= distanceFromDelivery ? null : freeParcel.position;
+    }
+
     findBestExplorationSite(): Position {
         return this.visitedTiles
             .entryArray()

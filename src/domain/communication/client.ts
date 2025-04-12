@@ -96,6 +96,10 @@ export class SocketClient implements Actuator, Information, Sensor {
                         config,
                         "PARCELS_OBSERVATION_DISTANCE",
                     ),
+                    parcelDecayingInterval: SocketClient.parseDurationConfiguration(
+                        config,
+                        "PARCEL_DECADING_INTERVAL",
+                    ),
                 } as EnvironmentConfiguration;
                 resolve(parsedConfig);
             });
@@ -150,7 +154,10 @@ export class SocketClient implements Actuator, Information, Sensor {
     private static parseDurationConfiguration(config: any, key: string): Duration {
         switch (typeof config[key]) {
             case "string": {
-                const interval = Number.parseInt(config[key].slice(0, -1), 10);
+                const interval: number =
+                    config[key] === "infinite"
+                        ? Number.POSITIVE_INFINITY
+                        : Number.parseInt(config[key].slice(0, -1), 10);
                 return Duration.fromMilliseconds(interval);
             }
             case "number":

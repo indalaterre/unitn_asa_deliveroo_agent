@@ -1,4 +1,5 @@
-import { Instant } from "@domain/models/time";
+import { GameConfiguration } from "@domain/models/configurations";
+import { type Duration, Instant } from "@domain/models/time";
 
 /**
  * Models a class whose value is decaying over time with a certain decaying factor
@@ -38,12 +39,10 @@ export class DecayingValue {
      * @returns The value.
      */
     public getValueByInstant(instant: Instant): number {
-        const diff = instant.subtract(this._instant);
+        const diff: Duration = instant.subtract(this._instant);
 
-        //TODO: Implement by configuration
-        //const { parcelDecayingInterval } = Config.getEnvironmentConfig();
-        //const value = this._value - diff.milliseconds / parcelDecayingInterval.milliseconds;
-        const value = this._value - diff.milliseconds / 1000;
+        const decayingInterval: Duration = GameConfiguration.parcelDecayingInterval;
+        const value: number = this._value - diff.milliseconds / decayingInterval.milliseconds;
         return value < 0 ? 0 : value;
     }
 
