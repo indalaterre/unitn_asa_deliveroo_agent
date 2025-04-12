@@ -1,3 +1,4 @@
+import * as path from "path";
 import commandLineArgs from "command-line-args";
 import * as dotenv from "dotenv";
 
@@ -14,8 +15,6 @@ import {
 import { Player } from "@domain/player";
 
 function getConfiguration(): AgentConfiguration {
-    dotenv.config();
-
     const options = [
         { name: "host", type: String },
         { name: "token", type: String },
@@ -30,9 +29,10 @@ function getConfiguration(): AgentConfiguration {
         { name: "use-pddl", type: Boolean },
         { name: "pddl-host", type: String },
         { name: "pddl-paas-path", type: String },
+        { name: "agent-name", type: String },
     ];
 
-    const defaultValues = new Map<string, number | boolean>();
+    const defaultValues = new Map<string, string | number | boolean>();
     defaultValues.set("hello-interval", 2000);
     defaultValues.set("max-last-heard", 6000);
     defaultValues.set("start-iterations", 10);
@@ -40,15 +40,10 @@ function getConfiguration(): AgentConfiguration {
     defaultValues.set("gaussian-std", 1.0);
     defaultValues.set("discount-factor", 0.0);
     defaultValues.set("use-pddl", false);
+    defaultValues.set("agent-name", "");
 
     // first check if the corresponding environment variables are set
     const config = new Map<string, string | number | boolean>();
-    for (const option of options) {
-        const varName = option.name.toUpperCase().replace(/-/g, "_");
-        if (process.env[varName]) {
-            config.set(option.name, option.type(process.env[varName]));
-        }
-    }
 
     // then parse the command line arguments
     const cliArgs = commandLineArgs(options);
@@ -56,14 +51,28 @@ function getConfiguration(): AgentConfiguration {
         config.set(arg, cliArgs[arg]);
     }
 
-    // check that all options are set
+    const agentName = cliArgs["agent-name"]; // get "second", "third", etc.
+    if (!agentName) {
+        dotenv.config();
+    } else {
+        // --- Construct env file path ---
+        const envFilename = agentName ? `.env.${agentName}` : ".env";
+        const envPath = path.resolve(__dirname, "..", envFilename);
+
+        // --- Load env file ---
+        dotenv.config({ path: envPath });
+    }
+
     for (const option of options) {
-        if (!config.get(option.name)) {
-            if (defaultValues.has(option.name)) {
-                config.set(option.name, defaultValues.get(option.name)!);
-            } else {
-                throw new Error(`Missing option ${option.name}`);
-            }
+        const varName = option.name.toUpperCase().replace(/-/g, "_");
+        const envValue = process.env[varName];
+
+        if (envValue !== undefined) {
+            config.set(option.name, option.type(envValue));
+        } else if (defaultValues.has(option.name)) {
+            config.set(option.name, defaultValues.get(option.name)!);
+        } else {
+            throw new Error(`Missing option ${option.name}`);
         }
     }
 

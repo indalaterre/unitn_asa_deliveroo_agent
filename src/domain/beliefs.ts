@@ -185,9 +185,10 @@ export class BeliefContainer {
 
         const worthScore: number = candidateScore - costOfDeviation;
         //The parcel is worth to be considered. We need to check if there is a closer deliver
-        const chosenPosition: Position =  worthScore <= distanceFromDelivery ? null : freeParcel.position;
-        if(!chosenPosition) {
-            this._notWorthParcels.add(freeParcel)
+        const chosenPosition: Position =
+            worthScore <= distanceFromDelivery ? null : freeParcel.position;
+        if (!chosenPosition) {
+            this._notWorthParcels.add(freeParcel);
         }
 
         return chosenPosition;

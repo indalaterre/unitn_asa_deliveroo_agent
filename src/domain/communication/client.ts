@@ -3,9 +3,11 @@ import { type Socket, io } from "socket.io-client";
 import type { Actuator } from "@domain/communication/actuator";
 import { Directions, Position, Tile } from "@domain/models/environment";
 
+import * as console from "node:console";
 import type { Information } from "@domain/communication/information";
 import type { Sensor } from "@domain/communication/sensor";
 import { Duration, type EnvironmentConfiguration, Parcel } from "@domain/models";
+import { Agent } from "@domain/models/agent";
 import { DecayingValue } from "@domain/models/decaying-value";
 import { IdAware } from "@domain/models/id-aware";
 import { PlayerInfo } from "@domain/player-info";
@@ -39,7 +41,7 @@ export class SocketClient implements Actuator, Information, Sensor {
     }
 
     /**
-     * Before the execution of the callback, translate the parcel data into a model for our agent
+     * Before the execution of the callback, translates the parcel data into a model for our agent
      * The read message has the following format:
      * {
      *     id        => the parcel id
@@ -66,6 +68,32 @@ export class SocketClient implements Actuator, Information, Sensor {
             });
 
             callback(parcels);
+        });
+    }
+
+    /**
+     * Before the execution of the callback, translates the agent data into a model for our agent
+     * The read message has the following format:
+     * {
+     *     id        => the parcel id
+     *     x         => the row position
+     *     y         => the column position
+     *     score    => the current agent score
+     * }
+     *
+     */
+    onAgentSensing(callback: (agents: Agent[]) => void): void {
+        this._socket.on("agents sensing", (agents: any[]) => {
+            const newAgents: Agent[] = agents.map(
+                (agentData: any) =>
+                    new Agent(
+                        agentData.id,
+                        new Position(agentData.x, agentData.y),
+                        agentData.score,
+                    ),
+            );
+
+            newAgents.length && callback(newAgents);
         });
     }
 

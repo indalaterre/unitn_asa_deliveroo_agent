@@ -8,6 +8,7 @@ import type {
     Parcel,
     PddlConfiguration,
 } from "@domain/models";
+import type { Agent } from "@domain/models/agent";
 import { type Directions, Position } from "@domain/models/environment";
 import { Intention, IntentionTypes } from "@domain/models/intention";
 import type { PlanMovingAction } from "@domain/models/plan";
@@ -58,6 +59,7 @@ export class Player {
         this._pddlSolver = new PddlSolver(pddlConfiguration, this._beliefs);
 
         this.updateKnownParcels(initialParcels);
+        sensor.onAgentSensing((agents: Agent[]) => this.updateKnownAgents(agents));
         sensor.onParcelDetected((parcels: Parcel[]) => this.updateKnownParcels(parcels));
         sensor.onPlayerPositionUpdate((position: Position) => this.updatePlayerPosition(position));
     }
@@ -169,7 +171,7 @@ export class Player {
                 if (newParcel.equals(this._beliefs.myPosition)) {
                     return Intention.pickUp(newParcel);
                 } else {
-                    Intention.move(newParcel);
+                    return Intention.move(newParcel);
                 }
             } else {
                 return Intention.move(closestDelivery);
@@ -199,9 +201,11 @@ export class Player {
         return null;
     }
 
-    updateKnownParcels(parcels: Parcel[]) {
+    updateKnownParcels(parcels: Parcel[]): void {
         this._beliefs.synchronizeKnownParcels(parcels);
     }
+
+    updateKnownAgents(agents: Agent[]): void {}
 
     updatePlayerPosition(position: Position) {
         // Fix row position
