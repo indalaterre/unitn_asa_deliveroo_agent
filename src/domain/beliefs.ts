@@ -20,6 +20,11 @@ export class BeliefContainer {
     private _carriedParcelId: string[] = [];
 
     /**
+     * @private Parcels that must be ignored during evaluation of additional picks up
+     */
+    private _notWorthParcels: HashSet<Parcel> = new HashSet();
+
+    /**
      * A map containing how much time a tile have been visited
      */
     private visitedTiles: HashMap<Position, number> = new HashMap();
@@ -142,6 +147,8 @@ export class BeliefContainer {
         this._carriedParcelId = this._carriedParcelId.filter(
             (parcelId: string) => !parcelIds.has(parcelId),
         );
+
+        this._notWorthParcels.clear();
     }
 
     findBestDelivery(): Position {
@@ -152,6 +159,7 @@ export class BeliefContainer {
         //TODO: We need the logic to handle the movement time and the decay (when different than 1s)
         const distanceFromDelivery: number = this._ownPosition.manhattanDistance(delivery);
         const freeParcel: Parcel = Array.from(this.freeParcelsById.values())
+            .filter((parcel: Parcel) => !this._notWorthParcels.has(parcel))
             .map((parcel: Parcel) => {
                 return {
                     context: parcel,
@@ -173,9 +181,16 @@ export class BeliefContainer {
             freeParcel.position.manhattanDistance(this._ownPosition) +
             freeParcel.position.manhattanDistance(delivery);
 
-        const worthScore: number = candidateScore - parcelCost;
+        const costOfDeviation: number = Math.abs(parcelCost - distanceFromDelivery);
+
+        const worthScore: number = candidateScore - costOfDeviation;
         //The parcel is worth to be considered. We need to check if there is a closer deliver
-        return worthScore <= distanceFromDelivery ? null : freeParcel.position;
+        const chosenPosition: Position =  worthScore <= distanceFromDelivery ? null : freeParcel.position;
+        if(!chosenPosition) {
+            this._notWorthParcels.add(freeParcel)
+        }
+
+        return chosenPosition;
     }
 
     findBestExplorationSite(): Position {

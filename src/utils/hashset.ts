@@ -59,6 +59,14 @@ export class HashSet<V extends Hashable> {
     }
 
     /**
+     * Clear the entire set
+     */
+    clear(): HashSet<V> {
+        this._map.clear();
+        return this;
+    }
+
+    /**
      * The number of occurrences
      */
     get count(): number {
