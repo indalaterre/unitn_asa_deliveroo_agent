@@ -193,8 +193,8 @@ export class MatchMap {
         );
     }
 
-    calculatePath(from: Position, to: Position): Position[] {
-        return this._graph.calculatePathWithAStar(from, to);
+    calculatePath(from: Position, to: Position, occupied_tiles: string[]): Position[] {
+        return this._graph.calculatePathWithAStar(from, to, occupied_tiles);
     }
 
     private _calculateDistanceFromReachable(a: Position, b: Position): number {

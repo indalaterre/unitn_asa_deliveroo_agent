@@ -119,6 +119,12 @@ export class Player {
         const path: Position[] = this._beliefs.calculateMovingPath(intention.position);
         const directions: Directions[] = [];
 
+        // TODO: manage plan not found
+        if (!path){
+            //throw new Error("Path not found");
+            return;
+        }
+
         for (let i = 0; i < path.length - 1; i++) {
             const direction: Directions = path[i].getDirection(path[i + 1]);
             if (direction) {
@@ -205,7 +211,9 @@ export class Player {
         this._beliefs.synchronizeKnownParcels(parcels);
     }
 
-    updateKnownAgents(agents: Agent[]): void {}
+    updateKnownAgents(agents: Agent[]): void {
+        this._beliefs.synchronizeKnownAgents(agents);
+    }
 
     updatePlayerPosition(position: Position) {
         // Fix row position

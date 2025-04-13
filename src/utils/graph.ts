@@ -109,7 +109,9 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
     calculatePathWithAStar(
         start: Position,
         end: Position,
+        occupied_tiles: string[],
         heuristic: AStarHeuristicFn = Position.manhattanDistance,
+
     ): Position[] {
         const gScore: HashMap<Position, number> = new HashMap();
         gScore.set(start, 0);
@@ -146,13 +148,18 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                 if (!this.isNeighbor(currentHashCode, neighbor)) {
                     return;
                 }
+                
+                let occupied = 0;
+                if (occupied_tiles && occupied_tiles.indexOf(tile.position.hashCode()) >= 0){
+                    occupied = Number.POSITIVE_INFINITY;
+                }
 
                 const tentativeGScore =
                     //We use Infinity as an edge case for g-scores not present in the map
                     //In this situation we were not able to calculate the score meaning that there is not way to reach
                     //  this node
                     (gScore.get(current.position) ?? Number.POSITIVE_INFINITY) +
-                    this.getDistance(currentHashCode, neighbor);
+                    this.getDistance(currentHashCode, neighbor) + occupied;
 
                 if (tentativeGScore < (gScore.get(tile.position) ?? Number.POSITIVE_INFINITY)) {
                     gScore.set(tile.position, tentativeGScore);

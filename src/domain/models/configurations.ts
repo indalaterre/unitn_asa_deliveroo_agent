@@ -85,4 +85,8 @@ export class GameConfiguration {
     static get parcelDecayingInterval(): Duration {
         return GameConfiguration._instance._environmentConfiguration.parcelDecayingInterval;
     }
+
+    static get agentVisibilityDistance(): number {
+        return GameConfiguration._instance._environmentConfiguration.agentVisibilityDistance;
+    }
 }

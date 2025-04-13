@@ -170,6 +170,9 @@ export class SocketClient implements Actuator, Information, Sensor {
     private static parseNumericConfiguration(config: any, key: string): number {
         switch (typeof config[key]) {
             case "string":
+                if (config[key] === "infinite"){
+                    return Number.POSITIVE_INFINITY;
+                }
                 return Number.parseInt(config[key], 10);
             case "number":
                 return config[key];

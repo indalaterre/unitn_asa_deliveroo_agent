@@ -1,5 +1,5 @@
 import type { MatchMap, PositionWithDistance } from "@domain/map";
-import { Parcel } from "@domain/models";
+import { Parcel, Agent } from "@domain/models";
 import { GameConfiguration } from "@domain/models/configurations";
 import type { Position } from "@domain/models/environment";
 import type { PlayerInfo } from "@domain/player-info";
@@ -54,6 +54,10 @@ export class BeliefContainer {
         string,
         PositionWithDistance
     >();
+
+    private readonly agentsByPosition: Map<Position, Agent> = new Map();
+
+    private readonly positionByAgent: Map<string, Position> = new Map();
 
     constructor(
         info: PlayerInfo,
@@ -115,7 +119,8 @@ export class BeliefContainer {
                 //We check if the parcel can be delivered to a delivery point
                 if (
                     !this.parcelsDistancesToCloserDelivery.has(parcel.id) ||
-                    !this.parcelsByPosition.has(parcel.position)
+                    !this.parcelsByPosition.has(parcel.position) ||
+                    this.getOccupiedPositions().indexOf(parcel.position.hashCode()) >= 0
                 ) {
                     //This values we have the lowest priority and will be discarded
                     return null;
@@ -159,7 +164,7 @@ export class BeliefContainer {
         //TODO: We need the logic to handle the movement time and the decay (when different than 1s)
         const distanceFromDelivery: number = this._ownPosition.manhattanDistance(delivery);
         const freeParcel: Parcel = Array.from(this.freeParcelsById.values())
-            .filter((parcel: Parcel) => !this._notWorthParcels.has(parcel))
+            .filter((parcel: Parcel) => !this._notWorthParcels.has(parcel) && this.getOccupiedPositions().indexOf(parcel.position.hashCode()) <= 0)
             .map((parcel: Parcel) => {
                 return {
                     context: parcel,
@@ -305,7 +310,8 @@ export class BeliefContainer {
     }
 
     calculateMovingPath(to: Position): Position[] {
-        return this.map.calculatePath(this._ownPosition, to);
+        const occupied_tiles = this.getOccupiedPositions();
+        return this.map.calculatePath(this._ownPosition, to, occupied_tiles);
     }
 
     private updateClosestDistanceFromDelivery(parcelId: string, parcelPosition: Position) {
@@ -350,5 +356,96 @@ export class BeliefContainer {
             .add(updatedParcel);
 
         return true;
+    }
+
+
+    //////// AGENT
+
+    synchronizeKnownAgents(agents: Agent[]) {
+
+        // TODO: Improve this logic
+
+        const agentVisibilityDistance = GameConfiguration.agentVisibilityDistance;
+
+        // Do not consider the visible agents who can never interact with the player.
+        const visibleAgents = agents.filter((agent) => {
+            return this.map.isReachable(this.myPosition, agent.position);
+        });
+
+        const visibleOccupiedPositions: Map<Position, string> = new Map();
+        for (const agent of visibleAgents){
+            visibleOccupiedPositions.set(agent.position, agent.agentId);
+        }
+
+        for (const [position, agent] of this.agentsByPosition.entries()) {
+            if (visibleOccupiedPositions.has(position)) {
+                // The position is still occupied by an agent
+                this.agentsByPosition.set(position, agent);
+                this.positionByAgent.set(agent.agentId, position);
+                continue;
+            }
+            const distance = this.myPosition.manhattanDistance(position);
+            if (distance <= agentVisibilityDistance) {
+                // The viewer can see the position and it is not occupied by an agent
+                this.agentsByPosition.delete(position);
+                this.positionByAgent.delete(agent.agentId);
+            } else if (position.equals(this.myPosition)) {
+                // The position is the same as the current position of the viewer,
+                // so it cannot be occupied by an agent.
+                this.agentsByPosition.delete(position);
+                this.positionByAgent.delete(agent.agentId);
+            } else if (
+                distance > agentVisibilityDistance
+            ) {
+                // The agent just moved to a position that the viewer cannot see so we need to remove the
+                // agent from the previous position
+                this.agentsByPosition.delete(position);
+                this.positionByAgent.delete(agent.agentId);
+            } else {
+                throw new Error("Something went wrong in synchronizeKnownAgents");
+            }
+        }
+
+        for (const agent of visibleAgents) {
+            if (!this.agentsByPosition.has(agent.position)) {
+                this.agentsByPosition.set(agent.position, agent);
+                this.positionByAgent.set(agent.agentId, agent.position);
+            }
+        }
+    }
+
+    /**
+     * Returns a list of hashcode of the positions that are currently occupied by agents.
+     */
+    getOccupiedPositions(): string[] {
+        const positions = [];
+
+        for (const [position, agent] of this.agentsByPosition.entries()) {
+            positions.push(position.hashCode());
+            //console.log(`Agent ${agent.agentId} at position ${position}`);
+        }
+
+        return positions;
+    }
+
+    /**
+     * Returns the agents occupying the positions in the environment.
+     */
+    getAgents(): Agent[] {
+        return Array.from(this.agentsByPosition.values());
+    }
+
+    /**
+     * Returns whether the given position is occupied by an agent.
+     */
+    isPositionOccupied(position: Position): boolean {
+
+        let result = false;
+
+        if (this.agentsByPosition.has(position)) {
+            result = true;
+        }
+
+        return result;
     }
 }
