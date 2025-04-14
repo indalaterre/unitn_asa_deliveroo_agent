@@ -148,9 +148,17 @@ export class Player {
     private async goAheadWithChosenPlan() {
         const plan = this._currentExecutingPlan as PlanMovingAction;
         if ([IntentionTypes.MOVE, IntentionTypes.EXPLORE].includes(plan.intention.type)) {
+
             const nextDirection: Directions = (plan.data as Directions[]).shift();
             if (nextDirection) {
                 const nextPosition = this._beliefs.myPosition.moveTo(nextDirection);
+
+                //if (this._beliefs.isPositionOccupied(nextPosition)){
+                //    // TODO: Improve this logic
+                //    this.calculateShortestPathFromMovingIntention(plan.intention);
+                //    return;
+                //}
+
                 console.log(`Moving from: ${this._beliefs.myPosition} to: ${nextPosition}`);
                 await this.actuator.move(nextDirection);
             } else {

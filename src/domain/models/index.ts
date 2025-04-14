@@ -1,5 +1,5 @@
 export { Parcel } from "./parcel";
-export { Agent } from "./agent";
+export { Agent, ObservedAgent } from "./agent";
 export { Instant, Duration } from "./time";
 export {
     AgentConfiguration,

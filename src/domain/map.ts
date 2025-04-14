@@ -193,7 +193,7 @@ export class MatchMap {
         );
     }
 
-    calculatePath(from: Position, to: Position, occupied_tiles: string[]): Position[] {
+    calculatePath(from: Position, to: Position, occupied_tiles: Position[]): Position[] {
         return this._graph.calculatePathWithAStar(from, to, occupied_tiles);
     }
 

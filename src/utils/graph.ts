@@ -109,7 +109,7 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
     calculatePathWithAStar(
         start: Position,
         end: Position,
-        occupied_tiles: string[],
+        occupied_tiles: Position[],
         heuristic: AStarHeuristicFn = Position.manhattanDistance,
 
     ): Position[] {
@@ -150,7 +150,7 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                 }
                 
                 let occupied = 0;
-                if (occupied_tiles && occupied_tiles.indexOf(tile.position.hashCode()) >= 0){
+                if (occupied_tiles && occupied_tiles.some(position => position.equals(tile.position))){
                     occupied = Number.POSITIVE_INFINITY;
                 }
 
