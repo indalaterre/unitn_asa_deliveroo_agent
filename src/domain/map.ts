@@ -172,7 +172,7 @@ export class MatchMap {
      * Calculates the distance of a position from the closest delivery point
      * @param position
      */
-    distanceFromTheClosestDelivery(position: Position): PositionWithDistance {
+    distanceFromTheClosestDelivery(position: Position, occupied_tiles: Position[] = []): PositionWithDistance {
         return (
             this._delivery
                 .map((tile: Tile) => tile.position)
@@ -189,11 +189,13 @@ export class MatchMap {
                     (d1: PositionWithDistance, d2: PositionWithDistance) =>
                         d2.distance - d1.distance,
                 )
+                // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
+                .filter((d): d is PositionWithDistance & { distance: number } => !!this.calculatePath(position, d.position, occupied_tiles))
                 .pop()
         );
     }
 
-    calculatePath(from: Position, to: Position, occupied_tiles: Position[]): Position[] {
+    calculatePath(from: Position, to: Position, occupied_tiles: Position[] = []): Position[] {
         return this._graph.calculatePathWithAStar(from, to, occupied_tiles);
     }
 

@@ -69,14 +69,48 @@ export class Tile implements Hashable {
 export class Position implements Hashable {
     private cachedHashCode: string;
 
+    public readonly row: number;
+    public readonly column: number;
+
     /**
      * @param row       the rows coordinate
      * @param column    the columns coordinate
      */
     constructor(
-        public readonly row: number,
-        public readonly column: number,
-    ) {}
+        row: number,
+        column: number,
+    ) {
+        // Fix row position
+        let new_row: number;
+        if (row > Math.floor(row) && row < Math.floor(row) + 0.5)
+        {
+            new_row = Math.floor(row);
+        }
+        else if (row > Math.floor(row) && row > Math.floor(row) + 0.5)
+        {
+            new_row = Math.ceil(row);
+        } else {
+            new_row = row;
+        }
+
+        // Fix column position
+        let new_column: number;
+        if (column > Math.floor(column) && column < Math.floor(column) + 0.5)
+        {
+            new_column = Math.floor(column);
+        }
+        else if (column > Math.floor(column) && column > Math.floor(column) + 0.5)
+        {
+            new_column = Math.ceil(column);
+        }
+        else
+        {
+            new_column = column;
+        }
+
+        this.row = new_row;
+        this.column = new_column;
+    }
 
     /**
      * Computes the manhattan distance between this position and the other position.

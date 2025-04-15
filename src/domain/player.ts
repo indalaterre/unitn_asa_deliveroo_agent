@@ -97,7 +97,11 @@ export class Player {
                 if (intention.type === IntentionTypes.EXPLORE) {
                     const a = 1;
                 }
-                this.calculateShortestPathFromMovingIntention(intention);
+                try {
+                    this.calculateShortestPathFromMovingIntention(intention);
+                } catch (error){
+                    console.log(error);
+                }
             } else if (intention.type === IntentionTypes.PICK_UP) {
                 // PICKUP case
                 const parcelsPickedUp: Set<string> = await this.actuator.pickup();
@@ -121,8 +125,7 @@ export class Player {
 
         // TODO: manage plan not found
         if (!path){
-            //throw new Error("Path not found");
-            return;
+            throw new Error("Path not found");
         }
 
         for (let i = 0; i < path.length - 1; i++) {
@@ -153,14 +156,20 @@ export class Player {
             if (nextDirection) {
                 const nextPosition = this._beliefs.myPosition.moveTo(nextDirection);
 
-                //if (this._beliefs.isPositionOccupied(nextPosition)){
-                //    // TODO: Improve this logic
-                //    this.calculateShortestPathFromMovingIntention(plan.intention);
-                //    return;
-                //}
+                // TODO: This logic can be improved
+                if (this._beliefs.isPositionOccupied(nextPosition)){
+                    // Try to recompute the path
+                    try {
+                        this.calculateShortestPathFromMovingIntention(plan.intention);
+                    } catch (error){
+                        // Drop the intention
+                        this._currentExecutingPlan = null;
+                    }
+                }
 
                 console.log(`Moving from: ${this._beliefs.myPosition} to: ${nextPosition}`);
-                await this.actuator.move(nextDirection);
+                let result = await this.actuator.move(nextDirection);
+                console.log(`result: ${result}`)
             } else {
                 //Moving plan has been completed
                 this._currentExecutingPlan = null;
@@ -224,41 +233,7 @@ export class Player {
     }
 
     updatePlayerPosition(position: Position) {
-        // Fix row position
-        let new_row: number;
-        if (
-            position.row > Math.floor(position.row) &&
-            position.row < Math.floor(position.row) + 0.5
-        ) {
-            new_row = Math.floor(position.row);
-        } else if (
-            position.row > Math.floor(position.row) &&
-            position.row > Math.floor(position.row) + 0.5
-        ) {
-            new_row = Math.ceil(position.row);
-        } else {
-            new_row = position.row;
-        }
-
-        // Fix column position
-        let new_column: number;
-        if (
-            position.column > Math.floor(position.column) &&
-            position.column < Math.floor(position.column) + 0.5
-        ) {
-            new_column = Math.floor(position.column);
-        } else if (
-            position.column > Math.floor(position.column) &&
-            position.column > Math.floor(position.column) + 0.5
-        ) {
-            new_column = Math.ceil(position.column);
-        } else {
-            new_column = position.column;
-        }
-
-        const newPosition = new Position(new_row, new_column);
-
-        this.playerInfo.position = newPosition;
-        this._beliefs.synchronizeMyPosition(newPosition);
+        this.playerInfo.position = new Position(position.row, position.column);
+        this._beliefs.synchronizeMyPosition(this.playerInfo.position);
     }
 }

@@ -156,6 +156,8 @@ export class BeliefContainer {
             })
             .filter(Boolean)
             .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
+            // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
+            .filter( d => !!this.map.calculatePath(this.myPosition, d.position, this.getOccupiedPositions()))
             .shift();
     }
 
@@ -168,7 +170,7 @@ export class BeliefContainer {
     }
 
     findBestDelivery(): Position {
-        return this.map.distanceFromTheClosestDelivery(this._ownPosition).position;
+        return this.map.distanceFromTheClosestDelivery(this._ownPosition, this.getOccupiedPositions()).position;
     }
 
     findAdditionalParcelWorthToKeep(delivery: Position): Position {
@@ -184,6 +186,8 @@ export class BeliefContainer {
                 } as PositionWithDistance;
             })
             .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
+            // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
+            .filter( d => !!this.map.calculatePath(this.myPosition, d.position, this.getOccupiedPositions()))
             .map((d: PositionWithDistance) => d.context as Parcel)
             .shift();
 
@@ -222,6 +226,8 @@ export class BeliefContainer {
             })
             .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d2.distance - d1.distance)
             .map((pos: PositionWithDistance) => pos.position)
+            // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
+            .filter( position => !!this.map.calculatePath(this.myPosition, position, this.getOccupiedPositions()))
             .shift();
     }
 
@@ -321,13 +327,12 @@ export class BeliefContainer {
     }
 
     calculateMovingPath(to: Position): Position[] {
-        const occupied_tiles = Array.from(this.agentsByPosition.keys());
-        console.log(this.agentsByPosition); // TODO: Remove
+        const occupied_tiles = this.getOccupiedPositions();
         return this.map.calculatePath(this._ownPosition, to, occupied_tiles);
     }
 
     private updateClosestDistanceFromDelivery(parcelId: string, parcelPosition: Position) {
-        const distanceFromClosestDelivery = this.map.distanceFromTheClosestDelivery(parcelPosition);
+        const distanceFromClosestDelivery = this.map.distanceFromTheClosestDelivery(parcelPosition, this.getOccupiedPositions());
         this.parcelsDistancesToCloserDelivery.set(parcelId, distanceFromClosestDelivery);
     }
 
@@ -439,6 +444,10 @@ export class BeliefContainer {
      */
     getAgents(): Agent[] {
         return Array.from(this.agentsByPosition.values());
+    }
+
+    getOccupiedPositions(): Position[] {
+        return Array.from(this.agentsByPosition.keys()); 
     }
 
     /**
