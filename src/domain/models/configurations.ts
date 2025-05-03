@@ -12,6 +12,9 @@ export type EnvironmentConfiguration = {
     readonly maxParcels: number;
     readonly numRandomAgents: number;
     readonly randomAgentMovementDuration: Duration;
+
+    //Calculated value
+    readonly moveScoreCost: number;
 };
 
 export interface CryptoConfiguration {
@@ -50,6 +53,16 @@ export interface AgentConfiguration {
     token: string;
 
     /**
+     * The total score the agent is allowed to carry at same time
+     */
+    maxCarryingParcels: number;
+
+    /**
+     * The radius of the area on which calculate the agent density of a tile
+     */
+    agentsDensityRadius: number;
+
+    /**
      * Stores the paths for the keys pair used to protect agents communication
      */
     cryptoKeyPaths: CryptoConfiguration;
@@ -63,15 +76,23 @@ export interface AgentConfiguration {
 export class GameConfiguration {
     private static _instance?: GameConfiguration;
 
+    private _agentConfiguration: AgentConfiguration;
     private _environmentConfiguration: EnvironmentConfiguration;
 
-    private constructor(envConfiguration: EnvironmentConfiguration) {
+    private constructor(
+        agentConfiguration: AgentConfiguration,
+        envConfiguration: EnvironmentConfiguration,
+    ) {
+        this._agentConfiguration = agentConfiguration;
         this._environmentConfiguration = envConfiguration;
     }
 
-    static init(envConfiguration: EnvironmentConfiguration): void {
+    static init(
+        agentConfiguration: AgentConfiguration,
+        envConfiguration: EnvironmentConfiguration,
+    ): void {
         if (GameConfiguration._instance) return;
-        GameConfiguration._instance = new GameConfiguration(envConfiguration);
+        GameConfiguration._instance = new GameConfiguration(agentConfiguration, envConfiguration);
     }
 
     static get movementDuration(): Duration {
@@ -88,5 +109,17 @@ export class GameConfiguration {
 
     static get agentVisibilityDistance(): number {
         return GameConfiguration._instance._environmentConfiguration.agentVisibilityDistance;
+    }
+
+    static get moveScoreCost(): number {
+        return GameConfiguration._instance._environmentConfiguration.moveScoreCost;
+    }
+
+    static get agentsDensityRadius(): number {
+        return GameConfiguration._instance._agentConfiguration.agentsDensityRadius;
+    }
+
+    static get maxCarryingParcels(): number {
+        return GameConfiguration._instance._agentConfiguration.maxCarryingParcels;
     }
 }

@@ -42,8 +42,8 @@ export class DecayingValue {
         const diff: Duration = instant.subtract(this._instant);
 
         const decayingInterval: Duration = GameConfiguration.parcelDecayingInterval;
-        const value: number = this._value - diff.milliseconds / decayingInterval.milliseconds;
-        return value < 0 ? 0 : value;
+        const value: number = this._value - diff.seconds / decayingInterval.seconds;
+        return Math.max(0, Math.floor(value));
     }
 
     /**

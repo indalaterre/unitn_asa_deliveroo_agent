@@ -2,16 +2,16 @@ import { BeliefContainer } from "@domain/beliefs";
 import type { Actuator } from "@domain/communication";
 import type { Sensor } from "@domain/communication/sensor";
 import type { MatchMap, PositionWithDistance } from "@domain/map";
-import type {
-    CryptoConfiguration,
-    EnvironmentConfiguration,
-    Parcel,
-    PddlConfiguration,
+import {
+    type CryptoConfiguration,
+    type EnvironmentConfiguration,
+    GameConfiguration,
+    type Parcel,
+    type PddlConfiguration,
 } from "@domain/models";
 import type { Agent } from "@domain/models/agent";
 import { type Directions, Position } from "@domain/models/environment";
 import { Intention, IntentionTypes } from "@domain/models/intention";
-import type { PlanMovingAction } from "@domain/models/plan";
 import { PddlSolver } from "@domain/pddl";
 import type { PlayerInfo } from "@domain/player-info";
 import { Cipher } from "@utils/cipher";
@@ -38,10 +38,10 @@ export class Player {
     private readonly _beliefs: BeliefContainer;
 
     /**
-     * The plan the agent is currently executing
+     * The current executing intention
      * @private
      */
-    private _currentExecutingPlan: PlanMovingAction;
+    private _currentIntention: Intention;
 
     public constructor(
         matchMap: MatchMap,
@@ -79,52 +79,54 @@ export class Player {
     private async _run(): Promise<void> {
         while (this._isAlive) {
             await new Promise((resolve) => setImmediate(resolve));
+            await this.goAheadWithChosenPlan();
 
-            if (this._currentExecutingPlan) {
-                await this.goAheadWithChosenPlan();
-            }
-
-            const intention: Intention = this._calculateNextAction(
-                this._currentExecutingPlan?.intention.type === IntentionTypes.EXPLORE,
-            );
+            const intention: Intention = this._calculateNextAction(this._currentIntention);
             if (!intention) {
                 continue;
             }
 
             console.log(`Chosen intention: ${intention.toString()}`);
 
-            if ([IntentionTypes.MOVE, IntentionTypes.EXPLORE].includes(intention.type)) {
-                if (intention.type === IntentionTypes.EXPLORE) {
-                    const a = 1;
-                }
-                try {
-                    this.calculateShortestPathFromMovingIntention(intention);
-                } catch (error){
-                    console.log(error);
-                }
+            if (Intention.MOVING_INTENTIONS.includes(intention.type)) {
+                this.calculateShortestPathFromMovingIntention(intention);
             } else if (intention.type === IntentionTypes.PICK_UP) {
                 // PICKUP case
-                const parcelsPickedUp: Set<string> = await this.actuator.pickup();
-
-                console.log(`Parcels: ${parcelsPickedUp} have been picked up`);
-                this._beliefs.carryingParcelIds = Array.from(parcelsPickedUp.values());
+                await this.executePickUpIntention();
             } else if (intention.type === IntentionTypes.PUT_DOWN) {
                 // PUT DOWN case
-                const parcelsToDrop: string[] = this._beliefs.carryingParcelIds;
-                const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
-
-                console.log(`Parcels ${parcelsDropped.toString()} have been dropped`);
-                this._beliefs.updateDroppedParcels(parcelsDropped);
+                await this.executePutDownIntention();
             }
         }
     }
 
-    private calculateShortestPathFromMovingIntention(intention: Intention) {
-        const path: Position[] = this._beliefs.calculateMovingPath(intention.position);
+    private async executePickUpIntention() {
+        const parcelsPickedUp: Set<string> = await this.actuator.pickup();
+
+        console.log(`Parcels: ${parcelsPickedUp} have been picked up`);
+        this._beliefs.updateCarriedParcelsAfterPickup(parcelsPickedUp);
+    }
+
+    private async executePutDownIntention() {
+        const parcelsToDrop: string[] = this._beliefs.carryingParcelIds;
+        const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
+
+        console.log(`Parcels ${parcelsDropped.toString()} have been dropped`);
+        this._beliefs.updateDroppedParcels(parcelsDropped);
+    }
+
+    private calculateShortestPathFromMovingIntention(
+        intention: Intention,
+        positionsToAvoid: Position[] = [],
+    ) {
+        const path: Position[] = this._beliefs.calculateMovingPath(
+            intention.position,
+            positionsToAvoid,
+        );
         const directions: Directions[] = [];
 
         // TODO: manage plan not found
-        if (!path){
+        if (!path) {
             throw new Error("Path not found");
         }
 
@@ -140,64 +142,71 @@ export class Player {
         console.log(`Calculate directions to: ${intention.position}:`);
         console.log(directions.join(","));
 
-        this._currentExecutingPlan = {
-            intention,
-            data: directions,
+        intention.context = {
+            directions,
             to: intention.position,
             from: this._beliefs.myPosition,
-        } as PlanMovingAction;
+        };
+
+        this._currentIntention = intention;
     }
 
     private async goAheadWithChosenPlan() {
-        const plan = this._currentExecutingPlan as PlanMovingAction;
-        if ([IntentionTypes.MOVE, IntentionTypes.EXPLORE].includes(plan.intention.type)) {
-
-            const nextDirection: Directions = (plan.data as Directions[]).shift();
-            if (nextDirection) {
-                const nextPosition = this._beliefs.myPosition.moveTo(nextDirection);
+        if (Intention.MOVING_INTENTIONS.includes(this._currentIntention?.type)) {
+            if (this._currentIntention.context.directions?.length) {
+                const nextDirection: Directions = this._currentIntention.context.directions.shift();
+                const nextPosition: Position = this._beliefs.myPosition.moveTo(nextDirection);
 
                 // TODO: This logic can be improved
-                if (this._beliefs.isPositionOccupied(nextPosition)){
-                    // Try to recompute the path
-                    try {
-                        this.calculateShortestPathFromMovingIntention(plan.intention);
-                    } catch (error){
-                        // Drop the intention
-                        this._currentExecutingPlan = null;
-                    }
+                if (this._beliefs.isPositionOccupied(nextPosition)) {
+                    this.calculateShortestPathFromMovingIntention(this._currentIntention, [
+                        nextPosition,
+                    ]);
+                }
+
+                if (this._beliefs.isAgentOnDeliveryTile() && this._beliefs.isCarrying) {
+                    await this.executePutDownIntention();
+                }
+
+                if (this._beliefs.isAgentOnFreeParcel()) {
+                    await this.executePickUpIntention();
                 }
 
                 console.log(`Moving from: ${this._beliefs.myPosition} to: ${nextPosition}`);
-                let result = await this.actuator.move(nextDirection);
-                console.log(`result: ${result}`)
+                await this.actuator.move(nextDirection);
             } else {
                 //Moving plan has been completed
-                this._currentExecutingPlan = null;
+                this._currentIntention = null;
             }
         }
     }
 
-    private _calculateNextAction(isExploring: boolean): Intention {
-        //Checking if the agent is carrying something
+    private _calculateNextAction(currentIntention: Intention): Intention {
         const isCarrying: boolean = this._beliefs.isCarrying;
         if (isCarrying) {
             //TODO: this part could be optimized
-            const closestDelivery: Position = this._beliefs.findBestDelivery();
-            if (closestDelivery?.equals(this._beliefs.myPosition)) {
+            const closestDelivery: Position =
+                currentIntention?.type === IntentionTypes.DELIVER
+                    ? currentIntention.position
+                    : this._beliefs.findBestDelivery();
+
+            if (closestDelivery.equals(this._beliefs.myPosition)) {
                 return Intention.putDown(closestDelivery);
             }
 
             //Let's check if we have good parcels nearby
-            const newParcel: Position =
-                this._beliefs.findAdditionalParcelWorthToKeep(closestDelivery);
-            if (newParcel) {
-                if (newParcel.equals(this._beliefs.myPosition)) {
-                    return Intention.pickUp(newParcel);
+            if (this._beliefs.carryingParcelIds?.length < GameConfiguration.maxCarryingParcels) {
+                const newParcel: Position =
+                    this._beliefs.findAdditionalParcelWorthToKeep(closestDelivery);
+                if (newParcel) {
+                    if (newParcel.equals(this._beliefs.myPosition)) {
+                        return Intention.pickUp(newParcel);
+                    } else {
+                        return Intention.move(newParcel);
+                    }
                 } else {
-                    return Intention.move(newParcel);
+                    return !!closestDelivery ? Intention.deliver(closestDelivery) : null;
                 }
-            } else {
-                return Intention.move(closestDelivery);
             }
         }
 
@@ -215,7 +224,7 @@ export class Player {
             return Intention.move(bestParcelPosition.position);
         }
 
-        if (!isExploring) {
+        if (currentIntention?.type !== IntentionTypes.EXPLORE) {
             //Evaluate the best position to explore
             const explorationSite: Position = this._beliefs.findBestExplorationSite();
             return Intention.explore(explorationSite);

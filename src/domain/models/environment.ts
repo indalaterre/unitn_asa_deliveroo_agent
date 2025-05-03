@@ -76,18 +76,12 @@ export class Position implements Hashable {
      * @param row       the rows coordinate
      * @param column    the columns coordinate
      */
-    constructor(
-        row: number,
-        column: number,
-    ) {
+    constructor(row: number, column: number) {
         // Fix row position
         let new_row: number;
-        if (row > Math.floor(row) && row < Math.floor(row) + 0.5)
-        {
+        if (row > Math.floor(row) && row < Math.floor(row) + 0.5) {
             new_row = Math.floor(row);
-        }
-        else if (row > Math.floor(row) && row > Math.floor(row) + 0.5)
-        {
+        } else if (row > Math.floor(row) && row > Math.floor(row) + 0.5) {
             new_row = Math.ceil(row);
         } else {
             new_row = row;
@@ -95,16 +89,11 @@ export class Position implements Hashable {
 
         // Fix column position
         let new_column: number;
-        if (column > Math.floor(column) && column < Math.floor(column) + 0.5)
-        {
+        if (column > Math.floor(column) && column < Math.floor(column) + 0.5) {
             new_column = Math.floor(column);
-        }
-        else if (column > Math.floor(column) && column > Math.floor(column) + 0.5)
-        {
+        } else if (column > Math.floor(column) && column > Math.floor(column) + 0.5) {
             new_column = Math.ceil(column);
-        }
-        else
-        {
+        } else {
             new_column = column;
         }
 

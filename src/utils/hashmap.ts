@@ -16,21 +16,6 @@ export class HashMap<K extends Hashable, V> {
         return entry === undefined ? undefined : entry[1];
     }
 
-    /**
-     * Retrieves the value associated to the key. If absent it creates a new entry taken by the producer
-     * @param key
-     * @param producer
-     */
-    public computeIfAbsent(key: K, producer: (_k: K) => V): V {
-        let entry: V = this.get(key);
-        if (!entry) {
-            entry = producer(key);
-            this.set(key, entry);
-        }
-
-        return entry;
-    }
-
     public set(key: K, value: V): void {
         this._map.set(key.hashCode(), [key, value]);
     }

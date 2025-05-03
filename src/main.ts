@@ -1,5 +1,5 @@
 import * as path from "path";
-import commandLineArgs from "command-line-args";
+import commandLineArgs, { type CommandLineOptions } from "command-line-args";
 import * as dotenv from "dotenv";
 
 import type { Actuator } from "@domain/communication";
@@ -24,12 +24,12 @@ function getConfiguration(): AgentConfiguration {
         { name: "max-last-heard", type: Number },
         { name: "start-iterations", type: Number },
         { name: "num-promising-positions", type: Number },
-        { name: "gaussian-std", type: Number },
-        { name: "discount-factor", type: Number },
         { name: "use-pddl", type: Boolean },
         { name: "pddl-host", type: String },
         { name: "pddl-paas-path", type: String },
         { name: "agent-name", type: String },
+        { name: "agents-density-radius", type: Number },
+        { name: "max-carrying-parcels", type: Number },
     ];
 
     const defaultValues = new Map<string, string | number | boolean>();
@@ -41,27 +41,26 @@ function getConfiguration(): AgentConfiguration {
     defaultValues.set("discount-factor", 0.0);
     defaultValues.set("use-pddl", false);
     defaultValues.set("agent-name", "");
+    defaultValues.set("agents-density-radius", 4);
+    defaultValues.set("max-carrying-parcels", 6);
 
     // first check if the corresponding environment variables are set
     const config = new Map<string, string | number | boolean>();
 
     // then parse the command line arguments
-    const cliArgs = commandLineArgs(options);
+    const cliArgs: CommandLineOptions = commandLineArgs(options);
     for (const arg in cliArgs) {
         config.set(arg, cliArgs[arg]);
     }
 
-    const agentName = cliArgs["agent-name"]; // get "second", "third", etc.
-    if (!agentName) {
-        dotenv.config();
-    } else {
-        // --- Construct env file path ---
-        const envFilename = agentName ? `.env.${agentName}` : ".env";
-        const envPath = path.resolve(__dirname, "..", envFilename);
+    dotenv.config();
 
-        // --- Load env file ---
-        dotenv.config({ path: envPath });
-    }
+    const agentName = cliArgs["agent-name"] ?? "main"; // get "second", "third", etc.
+    // --- Construct env file path ---
+    const envPath = path.resolve(__dirname, "..", `.player.env.${agentName}`);
+
+    // --- Load env file ---
+    dotenv.config({ path: envPath });
 
     for (const option of options) {
         const varName = option.name.toUpperCase().replace(/-/g, "_");
@@ -87,6 +86,8 @@ function getConfiguration(): AgentConfiguration {
             host: config.get("pddl-host") as string,
             pass_path: config.get("pddl-paas-path") as string,
         } as PddlConfiguration,
+        maxCarryingParcels: config.get("max-carrying-parcels") as number,
+        agentsDensityRadius: config.get("agents-density-radius") as number,
     } as AgentConfiguration;
 }
 
@@ -104,7 +105,7 @@ async function main(): Promise<void> {
         client.detectParcels(),
     ]);
 
-    GameConfiguration.init(envConfig);
+    GameConfiguration.init(gameConfiguration, envConfig);
 
     const mathMap: MatchMap = await MatchMap.build(freeTiles, playerInfo.position);
 

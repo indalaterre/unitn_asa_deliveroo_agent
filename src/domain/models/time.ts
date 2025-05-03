@@ -31,7 +31,17 @@ export class Instant {
  * Models the duration given by time differences
  */
 export class Duration {
-    private constructor(private readonly _value: number) {}
+    private constructor(
+        private readonly _value: number,
+        private readonly _isInfinite: boolean,
+    ) {}
+
+    /**
+     * TRUE if the duration is infinite
+     */
+    get isInfinite(): boolean {
+        return this._isInfinite;
+    }
 
     /**
      * @returns the time difference in milliseconds
@@ -41,10 +51,18 @@ export class Duration {
     }
 
     /**
-     * Creates an instance from a milliseconds amount
-     * @param milliseconds
+     * @returns the time difference in seconds
      */
-    static fromMilliseconds(milliseconds: number) {
-        return new Duration(milliseconds);
+    get seconds(): number {
+        return this._value / 1000;
+    }
+
+    /**
+     * Creates an instance from a milliseconds amount
+     * @param milliseconds  the duration in milliseconds
+     * @param isInfinite    TRUE if the duration is infinite
+     */
+    static fromMilliseconds(milliseconds: number, isInfinite = false): Duration {
+        return new Duration(milliseconds, isInfinite);
     }
 }

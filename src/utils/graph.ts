@@ -1,6 +1,7 @@
 import path from "node:path";
 import workerpool from "workerpool";
 
+import { GameConfiguration } from "@domain/models";
 import { Position, type Tile } from "@domain/models/environment";
 import { HashMap } from "@utils/hashmap";
 import { UndirectedGraph } from "graphology";
@@ -9,6 +10,7 @@ import PriorityQueue from "priority-queue-typescript";
 interface Edge {
     weight: number;
     neighbor: boolean;
+    isDensityRadius: boolean;
 }
 
 /**
@@ -50,7 +52,11 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                     continue;
                 }
 
-                graph.addUndirectedEdge(tileHash, adj.hashCode(), { weight: 1, neighbor: true });
+                graph.addUndirectedEdge(tileHash, adj.hashCode(), {
+                    weight: 1,
+                    neighbor: true,
+                    isDensityRadius: false,
+                });
             }
         });
 
@@ -74,9 +80,10 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
 
         await threadPool.terminate();
 
+        const agentDensityRadius: number = GameConfiguration.agentsDensityRadius;
         for (let i = 0; i < components.length; i++) {
             const distance = distances[i];
-            const component = components[i];
+            const component: Graph = components[i];
 
             const nodes: string[] = component.nodes();
             for (const [i, node] of nodes.entries()) {
@@ -85,6 +92,7 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                         graph.addUndirectedEdge(node, neighbor, {
                             neighbor: false,
                             weight: distance[i][j],
+                            isDensityRadius: distance[i][j] <= agentDensityRadius,
                         });
                     }
                 }
@@ -109,9 +117,8 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
     calculatePathWithAStar(
         start: Position,
         end: Position,
-        occupied_tiles: Position[],
+        occupied_tiles?: Position[],
         heuristic: AStarHeuristicFn = Position.manhattanDistance,
-
     ): Position[] {
         const gScore: HashMap<Position, number> = new HashMap();
         gScore.set(start, 0);
@@ -148,24 +155,25 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                 if (!this.isNeighbor(currentHashCode, neighbor)) {
                     return;
                 }
-                
+
                 let occupied = 0;
-                if (occupied_tiles && occupied_tiles.some(position => position.equals(tile.position))){
+                if (occupied_tiles?.some((position: Position) => position.equals(tile.position))) {
                     occupied = Number.POSITIVE_INFINITY;
                 }
 
-                const tentativeGScore =
+                const tentativeGScore: number =
                     //We use Infinity as an edge case for g-scores not present in the map
                     //In this situation we were not able to calculate the score meaning that there is not way to reach
                     //  this node
                     (gScore.get(current.position) ?? Number.POSITIVE_INFINITY) +
-                    this.getDistance(currentHashCode, neighbor) + occupied;
+                    this.getDistance(currentHashCode, neighbor) +
+                    occupied;
 
                 if (tentativeGScore < (gScore.get(tile.position) ?? Number.POSITIVE_INFINITY)) {
                     gScore.set(tile.position, tentativeGScore);
                     pathMap.set(tile.position, current.position);
 
-                    const f = heuristic(tile.position, end) + tentativeGScore;
+                    const f: number = heuristic(tile.position, end) + tentativeGScore;
                     fScore.set(tile.position, f);
 
                     priority.add({ position: tile.position, score: f });

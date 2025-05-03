@@ -129,7 +129,13 @@ export class SocketClient implements Actuator, Information, Sensor {
                         "PARCEL_DECADING_INTERVAL",
                     ),
                 } as EnvironmentConfiguration;
-                resolve(parsedConfig);
+
+                const moveScoreCost: number = parsedConfig.parcelDecayingInterval.isInfinite
+                    ? 0
+                    : parsedConfig.movementDuration.seconds /
+                      parsedConfig.parcelDecayingInterval.seconds;
+
+                resolve({ ...parsedConfig, moveScoreCost });
             });
         });
     }
@@ -170,7 +176,7 @@ export class SocketClient implements Actuator, Information, Sensor {
     private static parseNumericConfiguration(config: any, key: string): number {
         switch (typeof config[key]) {
             case "string":
-                if (config[key] === "infinite"){
+                if (config[key] === "infinite") {
                     return Number.POSITIVE_INFINITY;
                 }
                 return Number.parseInt(config[key], 10);
@@ -189,7 +195,7 @@ export class SocketClient implements Actuator, Information, Sensor {
                     config[key] === "infinite"
                         ? Number.POSITIVE_INFINITY
                         : Number.parseInt(config[key].slice(0, -1), 10);
-                return Duration.fromMilliseconds(interval);
+                return Duration.fromMilliseconds(interval, config[key] === "infinite");
             }
             case "number":
                 return Duration.fromMilliseconds(config[key]);

@@ -24,7 +24,15 @@ export interface PositionWithDistance {
 }
 
 export class MatchMap {
-    private readonly adjacencyMatrix: HashMap<Position, Position[]> = new HashMap();
+    private readonly _deliveryPositions: HashSet<Position> = new HashSet();
+    private readonly _adjacencyMatrix: HashMap<Position, Position[]> = new HashMap();
+
+    /**
+     * Stores the calculated paths in a cache
+     * The key: startPosition.hashCode + endPosition.hashCode
+     * @private
+     */
+    private readonly _pathsCache: Map<string, Position[]> = new Map<string, Position[]>();
 
     private constructor(
         private readonly width: number,
@@ -33,7 +41,10 @@ export class MatchMap {
         private readonly _graph: Graph,
         private readonly _spawn: Tile[],
         private readonly _delivery: Tile[],
-    ) {}
+    ) {
+        const deliveryPositions = this._delivery.map((tile: Tile) => tile.position);
+        this._deliveryPositions = new HashSet(deliveryPositions);
+    }
 
     /**
      * Builds the match map starting from the initial position of the agent
@@ -69,7 +80,7 @@ export class MatchMap {
     public getTiles(): Tile[] {
         const tiles = [];
 
-        this._graph.forEachNode((tileHash: string, tile: Tile) => tiles.push(tile));
+        this._graph.forEachNode((_: string, tile: Tile) => tiles.push(tile));
 
         return tiles;
     }
@@ -160,6 +171,29 @@ export class MatchMap {
     }
 
     /**
+     * The positions in the density radius starting from the input position
+     * @param position  the input position
+     */
+    getTilesInDensityRadius(position: Position): Position[] {
+        const positions: Position[] = [];
+
+        const positionHashCode = position.hashCode();
+        this._graph.forEachNeighbor(positionHashCode, (neighborId: string) => {
+            const isInRadius: boolean = this._graph.getEdgeAttribute(
+                positionHashCode,
+                neighborId,
+                "isDensityRadius",
+            );
+            if (isInRadius) {
+                const neighborTile: Tile = this._graph.getNodeAttributes(neighborId); // Tile
+                positions.push(neighborTile.position);
+            }
+        });
+
+        return positions;
+    }
+
+    /**
      * @param a
      * @param b
      * @returns the shortest path from point A to B. No errors thrown
@@ -171,32 +205,50 @@ export class MatchMap {
     /**
      * Calculates the distance of a position from the closest delivery point
      * @param position
+     * @param occupiedTiles positions to be ignored because occupied by another agent
      */
-    distanceFromTheClosestDelivery(position: Position, occupied_tiles: Position[] = []): PositionWithDistance {
-        return (
-            this._delivery
-                .map((tile: Tile) => tile.position)
-                .map((tilePosition: Position) => {
-                    return {
-                        position: tilePosition,
-                        distance: this.distanceIfPossible(position, tilePosition),
-                    } as PositionWithDistance;
-                })
-                //Removing not reachable delivery tiles
-                .filter((d): d is PositionWithDistance & { distance: number } => d.distance != null)
-                //Sorting descendently to then pop the last element
-                .sort(
-                    (d1: PositionWithDistance, d2: PositionWithDistance) =>
-                        d2.distance - d1.distance,
-                )
-                // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
-                .filter((d): d is PositionWithDistance & { distance: number } => !!this.calculatePath(position, d.position, occupied_tiles))
-                .pop()
-        );
+    distanceFromTheClosestDelivery(
+        position: Position,
+        occupiedTiles: Position[] = [],
+    ): PositionWithDistance {
+        const bestDeliverySites: PositionWithDistance[] = this._delivery
+            .map((tile: Tile) => tile.position)
+            .map((tilePosition: Position) => {
+                return {
+                    position: tilePosition,
+                    distance: this.distanceIfPossible(position, tilePosition),
+                } as PositionWithDistance;
+            })
+            //Removing not reachable delivery tiles
+            .filter((d): d is PositionWithDistance & { distance: number } => d.distance != null)
+            //Sorting descendently to then pop the last element
+            .sort(
+                (d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance,
+            );
+
+        let chosenBestDelivery: PositionWithDistance = null;
+        for (const delivery of bestDeliverySites) {
+            if (!!this.calculatePath(position, delivery.position, occupiedTiles)) {
+                chosenBestDelivery = delivery;
+                break;
+            }
+        }
+
+        return chosenBestDelivery;
     }
 
-    calculatePath(from: Position, to: Position, occupied_tiles: Position[] = []): Position[] {
-        return this._graph.calculatePathWithAStar(from, to, occupied_tiles);
+    calculatePath(from: Position, to: Position, positionsToAvoid: Position[] = []): Position[] {
+        if (positionsToAvoid?.length) {
+            return this._graph.calculatePathWithAStar(from, to, positionsToAvoid);
+        }
+
+        const cacheKey = `${from.hashCode()}-${to.hashCode()}`;
+        if (!this._pathsCache.has(cacheKey)) {
+            const path: Position[] = this._graph.calculatePathWithAStar(from, to);
+            path?.length && this._pathsCache.set(cacheKey, path);
+        }
+
+        return this._pathsCache.get(cacheKey);
     }
 
     private _calculateDistanceFromReachable(a: Position, b: Position): number {
@@ -204,7 +256,7 @@ export class MatchMap {
     }
 
     private _buildAdjacencyMatrix(tiles: Tile[]): void {
-        this.adjacencyMatrix.clear();
+        this._adjacencyMatrix.clear();
 
         const tileSet = new HashSet<Position>(tiles.map((tile: Tile) => tile.position));
 
@@ -217,7 +269,11 @@ export class MatchMap {
                 }
             }
 
-            this.adjacencyMatrix.set(tile.position, adjacentPositions);
+            this._adjacencyMatrix.set(tile.position, adjacentPositions);
         }
+    }
+
+    isDeliveryPosition(position: Position): boolean {
+        return this._deliveryPositions.has(position);
     }
 }

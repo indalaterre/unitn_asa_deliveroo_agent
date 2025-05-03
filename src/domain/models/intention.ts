@@ -7,20 +7,37 @@ export enum IntentionTypes {
     PUT_DOWN = 2,
 
     EXPLORE = 3,
+    DELIVER = 4,
 }
 
 export class Intention implements Hashable {
+    static readonly MOVING_INTENTIONS: IntentionTypes[] = [
+        IntentionTypes.MOVE,
+        IntentionTypes.EXPLORE,
+        IntentionTypes.DELIVER,
+    ];
+
     constructor(
         readonly type: IntentionTypes,
         readonly position: Position,
+        public _context?: any,
     ) {}
 
     /**
      * Generates a MOVE intention for the position
+     * @param position  the destination position
+     * @param isDelivering   TRUE if the agent is going to deliver a parcel
+     */
+    static move(position: Position, isDelivering = false): Intention {
+        return new Intention(IntentionTypes.MOVE, position, { isDelivering });
+    }
+
+    /**
+     * Generates a DELIVER intention for the position
      * @param position
      */
-    static move(position: Position): Intention {
-        return new Intention(IntentionTypes.MOVE, position);
+    static deliver(position: Position): Intention {
+        return new Intention(IntentionTypes.DELIVER, position);
     }
 
     /**
@@ -67,5 +84,13 @@ export class Intention implements Hashable {
      */
     toString(): string {
         return `${IntentionTypes[this.type]} - [${this.position.toString()}]`;
+    }
+
+    get context(): any {
+        return this._context;
+    }
+
+    set context(value: any) {
+        this._context = value;
     }
 }

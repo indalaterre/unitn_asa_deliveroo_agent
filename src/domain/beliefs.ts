@@ -1,13 +1,20 @@
 import type { MatchMap, PositionWithDistance } from "@domain/map";
-import { Parcel, Agent, ObservedAgent, Instant } from "@domain/models";
+import { type Agent, Instant, ObservedAgent, Parcel } from "@domain/models";
 import { GameConfiguration } from "@domain/models/configurations";
 import type { Position } from "@domain/models/environment";
 import type { PlayerInfo } from "@domain/player-info";
 import { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
+import { MultiValueHashMap } from "@utils/multivaluehashmap";
 import EventEmitter from "eventemitter3";
 
 export class BeliefContainer {
+    /**
+     * The id of the current agent
+     * @private
+     */
+    private readonly _ownId: string;
+
     /**
      * The position of the agent owning these beliefs
      * @private
@@ -17,7 +24,7 @@ export class BeliefContainer {
     /**
      * @private The ID of the carried parcels (if any)
      */
-    private _carriedParcelId: string[] = [];
+    private _carriedParcels: Parcel[] = [];
 
     /**
      * @private Parcels that must be ignored during evaluation of additional picks up
@@ -30,6 +37,12 @@ export class BeliefContainer {
     private visitedTiles: HashMap<Position, number> = new HashMap();
 
     /**
+     * Keeps the agents density in a region around the tile long GameConfiguration.agentsDensityRadius
+     * @private
+     */
+    private _agentsDensityOnTile: HashMap<Position, number> = new HashMap();
+
+    /**
      * An internal event emitter
      * @private
      */
@@ -38,7 +51,8 @@ export class BeliefContainer {
     /**
      * Map that associates a position to a set of parcels
      */
-    private readonly parcelsByPosition: HashMap<Position, HashSet<Parcel>> = new HashMap();
+    private readonly parcelsByPosition: MultiValueHashMap<Position, Parcel> =
+        new MultiValueHashMap();
 
     /**
      * @private
@@ -68,15 +82,17 @@ export class BeliefContainer {
     /**
      * Map of all the agent seen.
      */
-    private readonly agents: Map<String, ObservedAgent> = new Map();
+    private readonly agents: Map<string, ObservedAgent> = new Map();
 
     constructor(
         info: PlayerInfo,
         public readonly map: MatchMap,
     ) {
+        this._ownId = info.id.toString();
         this._ownPosition = info.position;
         for (const position of this.map.spawnTilePositions) {
             this.visitedTiles.set(position, 0);
+            this._agentsDensityOnTile.set(position, 0);
         }
     }
 
@@ -84,25 +100,14 @@ export class BeliefContainer {
      * @returns TRUE if the agent is carrying at least one parcel
      */
     get isCarrying(): boolean {
-        return !!this._carriedParcelId.length;
-    }
-
-    /**
-     * @returns the id of the parcel being carried
-     */
-    get carryingParcelId(): string {
-        return this._carriedParcelId?.[0];
+        return !!this._carriedParcels?.length;
     }
 
     /**
      * @returns the id of the parcel being carried
      */
     get carryingParcelIds(): string[] {
-        return this._carriedParcelId;
-    }
-
-    set carryingParcelIds(value: string[]) {
-        this._carriedParcelId = value;
+        return this._carriedParcels.map((parcel: Parcel) => parcel.id);
     }
 
     /**
@@ -125,59 +130,80 @@ export class BeliefContainer {
      * The Agent/Parcel + Parcel/Delivery distance must be the optimal one
      */
     get bestParcelToDeliver(): PositionWithDistance {
-        return Array.from(this.freeParcelsById.values())
-            .map((parcel: Parcel) => {
-                //We check if the parcel can be delivered to a delivery point
-                if (
-                    !this.parcelsDistancesToCloserDelivery.has(parcel.id) ||
-                    !this.parcelsByPosition.has(parcel.position) ||
-                    this.agentsByPosition.has(parcel.position)
-                ) {
-                    //This values we have the lowest priority and will be discarded
-                    return null;
-                }
+        return (
+            Array.from(this.freeParcelsById.values())
+                .map((parcel: Parcel) => {
+                    //We check if the parcel can be delivered to a delivery point
+                    if (
+                        !this.parcelsDistancesToCloserDelivery.has(parcel.id) ||
+                        !this.parcelsByPosition.has(parcel.position) ||
+                        this.agentsByPosition.has(parcel.position)
+                    ) {
+                        //This values we have the lowest priority and will be discarded
+                        return null;
+                    }
 
-                //Calculating the Agent/Parcel + Parcel/Delivery distance
-                const agentParcelDistance = this._ownPosition.manhattanDistance(parcel.position);
-                const parcelDeliveryDistance = parcel.position.manhattanDistance(
-                    this.parcelsDistancesToCloserDelivery.get(parcel.id).position,
-                );
+                    //Calculating the Agent/Parcel + Parcel/Delivery distance
+                    const agentParcelDistance = this._ownPosition.manhattanDistance(
+                        parcel.position,
+                    );
+                    const parcelDeliveryDistance = parcel.position.manhattanDistance(
+                        this.parcelsDistancesToCloserDelivery.get(parcel.id).position,
+                    );
 
-                //The calculated distance will be divided but the number of parcels in that position
-                //TODO: Add a metric for the score
+                    //The calculated distance will be divided but the number of parcels in that position
+                    //TODO: Add a metric for the score
 
-                const parcelsInPosition = this.parcelsByPosition.get(parcel.position);
-                return {
-                    context: parcel,
-                    position: parcel.position,
-                    distance:
-                        (agentParcelDistance + parcelDeliveryDistance) / parcelsInPosition.count,
-                } as PositionWithDistance;
-            })
-            .filter(Boolean)
-            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
-            // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
-            .filter( d => !!this.map.calculatePath(this.myPosition, d.position, this.getOccupiedPositions()))
-            .shift();
+                    const parcelsInPosition = this.parcelsByPosition.get(parcel.position);
+                    return {
+                        context: parcel,
+                        position: parcel.position,
+                        distance:
+                            (agentParcelDistance + parcelDeliveryDistance) /
+                            parcelsInPosition.count,
+                    } as PositionWithDistance;
+                })
+                .filter(Boolean)
+                .sort(
+                    (d1: PositionWithDistance, d2: PositionWithDistance) =>
+                        d1.distance - d2.distance,
+                )
+                // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
+                .filter((d) =>
+                    this.map.calculatePath(
+                        this.myPosition,
+                        d.position,
+                        this.getOccupiedPositions(),
+                    ),
+                )
+                .shift()
+        );
     }
 
     updateDroppedParcels(parcelIds: Set<string>): void {
-        this._carriedParcelId = this._carriedParcelId.filter(
-            (parcelId: string) => !parcelIds.has(parcelId),
+        this._carriedParcels = this._carriedParcels.filter(
+            (parcel: Parcel) => !parcelIds.has(parcel.id),
         );
 
         this._notWorthParcels.clear();
     }
 
     findBestDelivery(): Position {
-        return this.map.distanceFromTheClosestDelivery(this._ownPosition, this.getOccupiedPositions()).position;
+        return this.map.distanceFromTheClosestDelivery(
+            this._ownPosition,
+            this.getOccupiedPositions(),
+        )?.position;
     }
 
     findAdditionalParcelWorthToKeep(delivery: Position): Position {
-        //TODO: We need the logic to handle the movement time and the decay (when different than 1s)
         const distanceFromDelivery: number = this._ownPosition.manhattanDistance(delivery);
-        const freeParcel: Parcel = Array.from(this.freeParcelsById.values())
-            .filter((parcel: Parcel) => !this._notWorthParcels.has(parcel) && !this.agentsByPosition.has(parcel.position))
+        const carryingParcelIds: Set<string> = new Set(this.carryingParcelIds);
+
+        const positions: PositionWithDistance[] = Array.from(this.freeParcelsById.values())
+            .filter(
+                (parcel: Parcel) =>
+                    !carryingParcelIds.has(parcel.id) && !this._notWorthParcels.has(parcel),
+            )
             .map((parcel: Parcel) => {
                 return {
                     context: parcel,
@@ -185,28 +211,53 @@ export class BeliefContainer {
                     distance: parcel.position.manhattanDistance(this._ownPosition),
                 } as PositionWithDistance;
             })
-            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
-            // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
-            .filter( d => !!this.map.calculatePath(this.myPosition, d.position, this.getOccupiedPositions()))
-            .map((d: PositionWithDistance) => d.context as Parcel)
-            .shift();
+            .sort(
+                (d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance,
+            );
 
+        let candidateParcel: PositionWithDistance = null;
+        for (const position of positions) {
+            if (
+                this.map.calculatePath(
+                    this.myPosition,
+                    position.position,
+                    this.getOccupiedPositions(),
+                )
+            ) {
+                candidateParcel = position;
+                break;
+            }
+        }
+
+        const freeParcel: Parcel = candidateParcel?.context;
         if (!freeParcel) {
             return null;
         }
 
-        //TODO: Need to improve this logic. Must only consider the cost of the deviation
-        const candidateScore: number = freeParcel.currentScore;
-        const parcelCost: number =
-            freeParcel.position.manhattanDistance(this._ownPosition) +
-            freeParcel.position.manhattanDistance(delivery);
+        //The cost associated to each deviation step
+        const moveScoreCost: number = GameConfiguration.moveScoreCost;
 
-        const costOfDeviation: number = Math.abs(parcelCost - distanceFromDelivery);
+        const toParcelPath: Position[] = this.map.calculatePath(
+            this.myPosition,
+            freeParcel.position,
+            this.getOccupiedPositions(),
+        );
+        const parcelToDeliveryPath: Position[] = this.map.calculatePath(
+            freeParcel.position,
+            this.parcelsDistancesToCloserDelivery.get(freeParcel.id).position,
+            this.getOccupiedPositions(),
+        );
+        const newParcelCost: number = toParcelPath.length + parcelToDeliveryPath.length;
 
-        const worthScore: number = candidateScore - costOfDeviation;
-        //The parcel is worth to be considered. We need to check if there is a closer deliver
-        const chosenPosition: Position =
-            worthScore <= distanceFromDelivery ? null : freeParcel.position;
+        /*
+         * The parcel is worth to be considered if:
+         * currScore + newParcelScore - (moveCost * newDistance) >= currScore - (moveCost * distance)
+         * newParcelScore >= -(moveCost * distance) + (moveCost * newDistance)
+         * newParcelScore >= moveCost * (newDistance - distance)
+         */
+        const worthDetour: boolean =
+            freeParcel.currentScore >= moveScoreCost * (newParcelCost - distanceFromDelivery);
+        const chosenPosition: Position = worthDetour ? null : freeParcel.position;
         if (!chosenPosition) {
             this._notWorthParcels.add(freeParcel);
         }
@@ -215,20 +266,28 @@ export class BeliefContainer {
     }
 
     findBestExplorationSite(): Position {
-        return this.visitedTiles
+        const explorationCandidates: Position[] = this.visitedTiles
             .entryArray()
             .map(([position, visits]: [Position, number]) => {
                 const distance: number = this._ownPosition.manhattanDistance(position);
+                const agentsDensityMalus: number = this._agentsDensityOnTile.get(position);
                 return {
                     position,
-                    distance: 1 / (visits + 1) + distance,
+                    distance: 1 / (visits + 1) + distance + agentsDensityMalus,
                 } as PositionWithDistance;
             })
             .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d2.distance - d1.distance)
-            .map((pos: PositionWithDistance) => pos.position)
-            // TODO: Find a better way to see if the path is not practicable, or return the path calculated here.
-            .filter( position => !!this.map.calculatePath(this.myPosition, position, this.getOccupiedPositions()))
-            .shift();
+            .map((pos: PositionWithDistance) => pos.position);
+
+        let explorationSite: Position = null;
+        for (const candidate of explorationCandidates) {
+            if (this.map.calculatePath(this.myPosition, candidate, this.getOccupiedPositions())) {
+                explorationSite = candidate;
+                break;
+            }
+        }
+
+        return explorationSite;
     }
 
     synchronizeMyPosition(position: Position): void {
@@ -292,10 +351,7 @@ export class BeliefContainer {
                 } else {
                     // This is a new parcel not seen before
                     this.freeParcelsById.set(parcel.id, parcel);
-
-                    this.parcelsByPosition
-                        .computeIfAbsent(parcel.position, () => new HashSet<Parcel>())
-                        .add(parcel);
+                    this.parcelsByPosition.add(parcel.position, parcel);
 
                     newFreeParcels.push(parcel);
                 }
@@ -326,13 +382,16 @@ export class BeliefContainer {
         }
     }
 
-    calculateMovingPath(to: Position): Position[] {
-        const occupied_tiles = this.getOccupiedPositions();
-        return this.map.calculatePath(this._ownPosition, to, occupied_tiles);
+    calculateMovingPath(to: Position, positionsToAvoid: Position[] = []): Position[] {
+        return this.map.calculatePath(this._ownPosition, to, positionsToAvoid);
     }
 
     private updateClosestDistanceFromDelivery(parcelId: string, parcelPosition: Position) {
-        const distanceFromClosestDelivery = this.map.distanceFromTheClosestDelivery(parcelPosition, this.getOccupiedPositions());
+        const distanceFromClosestDelivery = this.map.distanceFromTheClosestDelivery(
+            parcelPosition,
+            this.getOccupiedPositions(),
+        );
+
         this.parcelsDistancesToCloserDelivery.set(parcelId, distanceFromClosestDelivery);
     }
 
@@ -368,29 +427,46 @@ export class BeliefContainer {
         this.parcelsByPosition.get(knownPosition)?.delete(parcel);
 
         //Setting new value
-        this.parcelsByPosition
-            .computeIfAbsent(newPosition, () => new HashSet<Parcel>())
-            .add(updatedParcel);
+        this.parcelsByPosition.add(newPosition, updatedParcel);
 
         return true;
     }
 
+    updateCarriedParcelsAfterPickup(pickedParcelIds: Set<string>) {
+        const pickedUpParcels: HashSet<Parcel> = this.parcelsByPosition.get(this.myPosition);
+        if (!pickedUpParcels) {
+            return;
+        }
+
+        for (const parcelId of pickedParcelIds) {
+            const parcel: Parcel = this.freeParcelsById.get(parcelId);
+            if(parcel) {
+
+                this._carriedParcels.push(parcel);
+                this.freeParcelsById.delete(parcelId);
+
+                this.parcelsByPosition.delete(this.myPosition);
+                this.parcelsDistancesToCloserDelivery.delete(parcel.id);
+            } else {
+                const a = 1;
+            }
+
+        }
+    }
 
     //////// AGENT
 
     synchronizeKnownAgents(agents: Agent[]) {
-
         // TODO: Improve this logic
-
-        const agentVisibilityDistance = GameConfiguration.agentVisibilityDistance;
+        const agentVisibilityDistance: number = GameConfiguration.agentVisibilityDistance;
 
         // Do not take into account the visible agents that cannot interact with the player.
-        const agentsSeen = agents.filter((agent) => {
+        const agentsSeen: Agent[] = agents.filter((agent) => {
             return this.map.isReachable(this.myPosition, agent.position);
         });
 
         const visibleOccupiedPositions: Map<Position, string> = new Map();
-        for (const agent of agentsSeen){
+        for (const agent of agentsSeen) {
             visibleOccupiedPositions.set(agent.position, agent.agentId);
         }
 
@@ -411,9 +487,7 @@ export class BeliefContainer {
                 // making it unoccupiable by an agent.
                 this.agentsByPosition.delete(position);
                 this.positionByAgent.delete(agent);
-            } else if (
-                distance > agentVisibilityDistance
-            ) {
+            } else if (distance > agentVisibilityDistance) {
                 // The agent moved to a position that is not visible,
                 // so we need to remove it from the previous position.
                 this.agentsByPosition.delete(position);
@@ -429,13 +503,49 @@ export class BeliefContainer {
                 this.positionByAgent.set(agent, agent.position);
             }
 
+            //TODO: this map can be improved with a hashmap
             if (!this.agents.has(agent.agentId)) {
                 const observedAgent = new ObservedAgent(agent.agentId, agent.score, Instant.now());
                 this.agents.set(observedAgent.agentId, observedAgent);
             } else {
-                this.agents.get(agent.agentId).score = agent.score;
-                this.agents.get(agent.agentId).lastSeen = Instant.now();
+                const seenAgent = {
+                    ...this.agents.get(agent.agentId),
+                    score: agent.score,
+                    lastSeen: Instant.now(),
+                } as ObservedAgent;
+
+                this.agents.set(agent.agentId, seenAgent);
             }
+        }
+
+        //Keeps track of how much tiles there are in the density area of each position
+        const positionRadiusAreaCount: HashMap<Position, number> = new HashMap();
+        for (const [agent, position] of this.positionByAgent.entries()) {
+            if (agent.agentId === this._ownId) {
+                continue;
+            }
+
+            const densityPositions: Position[] = this.map.getTilesInDensityRadius(position);
+            for (const densityPosition of densityPositions) {
+                if (!positionRadiusAreaCount.has(densityPosition)) {
+                    positionRadiusAreaCount.set(
+                        densityPosition,
+                        this.map.getTilesInDensityRadius(position)?.length,
+                    );
+                }
+
+                this._agentsDensityOnTile.update(
+                    densityPosition,
+                    (count: number) => (count ?? 0) + 1,
+                );
+            }
+        }
+
+        for (const [position, tilesCount] of positionRadiusAreaCount.entries()) {
+            this._agentsDensityOnTile.update(
+                position,
+                (count: number) => (count ?? 0) / tilesCount,
+            );
         }
     }
 
@@ -447,14 +557,13 @@ export class BeliefContainer {
     }
 
     getOccupiedPositions(): Position[] {
-        return Array.from(this.agentsByPosition.keys()); 
+        return Array.from(this.agentsByPosition.keys());
     }
 
     /**
      * Returns whether the given position is occupied by an agent.
      */
     isPositionOccupied(position: Position): boolean {
-
         let result = false;
 
         if (this.agentsByPosition.has(position)) {
@@ -462,5 +571,26 @@ export class BeliefContainer {
         }
 
         return result;
+    }
+
+    isAgentOnDeliveryTile(): boolean {
+        return this.map.isDeliveryPosition(this.myPosition);
+    }
+
+    isAgentOnFreeParcel(): boolean {
+        const parcelsInPosition: HashSet<Parcel> = this.parcelsByPosition.get(this.myPosition);
+        if (!parcelsInPosition) {
+            return false;
+        }
+
+        const carriedParcelIds: Set<string> = new Set<string>(this.carryingParcelIds);
+
+        for (const parcel of parcelsInPosition) {
+            if (!carriedParcelIds.has(parcel.id)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
