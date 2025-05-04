@@ -112,7 +112,7 @@ export class SocketClient implements Actuator, Information, Sensor {
                         config,
                         "PARCEL_REWARD_AVG",
                     ),
-                    movementDuration: SocketClient.parseDurationConfiguration(
+                    movementDuration: SocketClient.parseMillisecondsDurationConfiguration(
                         config,
                         "MOVEMENT_DURATION",
                     ),
@@ -124,7 +124,7 @@ export class SocketClient implements Actuator, Information, Sensor {
                         config,
                         "PARCELS_OBSERVATION_DISTANCE",
                     ),
-                    parcelDecayingInterval: SocketClient.parseDurationConfiguration(
+                    parcelDecayingInterval: SocketClient.parseSecondsDurationConfiguration(
                         config,
                         "PARCEL_DECADING_INTERVAL",
                     ),
@@ -188,7 +188,7 @@ export class SocketClient implements Actuator, Information, Sensor {
         }
     }
 
-    private static parseDurationConfiguration(config: any, key: string): Duration {
+    private static parseMillisecondsDurationConfiguration(config: any, key: string): Duration {
         switch (typeof config[key]) {
             case "string": {
                 const interval: number =
@@ -199,6 +199,22 @@ export class SocketClient implements Actuator, Information, Sensor {
             }
             case "number":
                 return Duration.fromMilliseconds(config[key]);
+            default:
+                throw new Error(`Invalid key: ${key}`);
+        }
+    }
+
+    private static parseSecondsDurationConfiguration(config: any, key: string): Duration {
+        switch (typeof config[key]) {
+            case "string": {
+                const interval: number =
+                    config[key] === "infinite"
+                        ? Number.POSITIVE_INFINITY
+                        : Number.parseInt(config[key].slice(0, -1), 10) * 1000;
+                return Duration.fromMilliseconds(interval, config[key] === "infinite");
+            }
+            case "number":
+                return Duration.fromMilliseconds(config[key] * 1000);
             default:
                 throw new Error(`Invalid key: ${key}`);
         }
