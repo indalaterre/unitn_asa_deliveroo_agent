@@ -101,7 +101,7 @@ export class Intention extends AbstractHashable implements Hashable {
     }
 
     shouldGiveUp(): boolean {
-        return this.type !== IntentionTypes.EXPLORE && this._failures >= this.MAX_ALLOWED_FAILURES;
+        return this._failures >= this.MAX_ALLOWED_FAILURES;
     }
 
     get context(): any {

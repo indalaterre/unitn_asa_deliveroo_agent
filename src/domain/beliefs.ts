@@ -32,6 +32,12 @@ export class BeliefContainer {
      * Stores the temporary disabled delivery points
      * @private
      */
+    private _temporaryBlockedExplore: HashMap<Position, DecayingValue> = new HashMap();
+
+    /**
+     * Stores the temporary disabled delivery points
+     * @private
+     */
     private _temporaryBlockedDeliveries: HashMap<Position, DecayingValue> = new HashMap();
 
     /**
@@ -150,6 +156,8 @@ export class BeliefContainer {
      * The Agent/Parcel + Parcel/Delivery distance must be the optimal one
      */
     get bestParcelToDeliver(): PositionWithDistance {
+        const moveScoreCost: number = GameConfiguration.moveScoreCost;
+
         return Array.from(this.freeParcelsById.values())
             .filter(
                 (parcel: Parcel) =>
@@ -159,26 +167,45 @@ export class BeliefContainer {
                     !this.agentsByPosition.has(parcel.position),
             )
             .map((parcel: Parcel) => {
-                //Calculating the Agent/Parcel + Parcel/Delivery distance
-                const agentParcelDistance = this._ownPosition.manhattanDistance(parcel.position);
-
-                const parcelDeliveryDistance = parcel.position.manhattanDistance(
+                //The cost associated to each deviation step
+                const toParcelPath: Position[] = this.map.calculatePath(
+                    this.myPosition,
+                    parcel.position,
+                );
+                const parcelToDeliveryPath: Position[] = this.map.calculatePath(
+                    parcel.position,
                     this.parcelsDistancesToCloserDelivery.get(parcel.id).position,
                 );
 
-                //The calculated distance will be divided but the number of parcels in that position
-                //TODO: Add a metric for the score
+                if(toParcelPath && parcelToDeliveryPath) {
+                    const totalPathLength = toParcelPath.length + parcelToDeliveryPath.length;
 
-                const parcelsInPosition = this.parcelsByPosition.get(parcel.position);
-                return {
-                    context: parcel,
-                    position: parcel.position,
-                    distance:
-                        (agentParcelDistance + parcelDeliveryDistance) / parcelsInPosition.count,
-                } as PositionWithDistance;
+                    const parcelsScore =
+                        this.parcelsByPosition.get(parcel.position).all
+                            .reduce((acc, curr) => acc + curr.currentScore, 0);
+
+                    const deliveryScore = parcelsScore - totalPathLength * moveScoreCost;
+
+                    if(deliveryScore > 0) {
+                        return {
+                            context: {
+                                parcel,
+                                weightedScore: totalPathLength - deliveryScore
+                            },
+                            position: parcel.position,
+                            distance: toParcelPath.length
+                        } as PositionWithDistance;
+                    }
+                }
+
+                return null;
             })
             .filter(Boolean)
-            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
+            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => {
+                const weightedScore1 = d1.context.weightedScore;
+                const weightedScore2 = d2.context.weightedScore;
+                return weightedScore1 - weightedScore2;
+            })
             .shift();
     }
 
@@ -242,12 +269,22 @@ export class BeliefContainer {
                     !carryingParcelIds.has(parcel.id) && !this._notWorthParcels.has(parcel),
             )
             .map((parcel: Parcel) => {
-                return {
-                    context: parcel,
-                    position: parcel.position,
-                    distance: parcel.position.manhattanDistance(this._ownPosition),
-                } as PositionWithDistance;
+                const toParcelPath: Position[] = this.map.calculatePath(
+                    this.myPosition,
+                    parcel.position,
+                );
+
+                if(toParcelPath) {
+                    return {
+                        context: parcel,
+                        position: parcel.position,
+                        distance: toParcelPath.length,
+                    } as PositionWithDistance;
+                }
+
+                return null;
             })
+            .filter(Boolean)
             .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
             .shift();
 
@@ -259,18 +296,15 @@ export class BeliefContainer {
         //The cost associated to each deviation step
         const moveScoreCost: number = GameConfiguration.moveScoreCost;
 
-        const toParcelPath: Position[] = this.map.calculatePath(
-            this.myPosition,
-            freeParcel.position,
-        );
+        const toParcelPathLength: number = candidatePosition.distance
         const parcelToDeliveryPath: Position[] = this.map.calculatePath(
             freeParcel.position,
             this.parcelsDistancesToCloserDelivery.get(freeParcel.id).position,
         );
 
         let chosenPosition: PositionWithDistance = null;
-        if (toParcelPath && parcelToDeliveryPath) {
-            const newParcelCost: number = toParcelPath.length + parcelToDeliveryPath.length;
+        if (parcelToDeliveryPath) {
+            const newParcelCost: number = toParcelPathLength + parcelToDeliveryPath.length;
 
             /*
              * The parcel is worth to be considered if:
@@ -294,6 +328,7 @@ export class BeliefContainer {
         return this.visitedTiles
             .entryArray()
             .filter(([position, _]: [Position, number]) => this.map.isSpawnPosition(position))
+            .filter(([position, _]: [Position, number]) => !this._temporaryBlockedExplore.has(position))
             .map(([position, visits]: [Position, number]) => {
                 const distance: number = this._ownPosition.manhattanDistance(position);
                 const agentsDensityMalus: number = this._agentsDensityOnTile.get(position);
@@ -322,6 +357,8 @@ export class BeliefContainer {
             this._notWorthParcels.addAll(parcels.all);
         } else if (type === IntentionTypes.DELIVER) {
             this._temporaryBlockedDeliveries.set(intention.position, new DecayingValue(5));
+        } else if (type === IntentionTypes.EXPLORE) {
+            this._temporaryBlockedExplore.set(intention.position, new DecayingValue(5));
         }
     }
 
@@ -413,6 +450,9 @@ export class BeliefContainer {
         }
 
         //Cleaning disabled delivery points
+        this._temporaryBlockedExplore.deleteIf(
+            (_, value: DecayingValue) => value.currentValue <= 0,
+        );
         this._temporaryBlockedDeliveries.deleteIf(
             (_, value: DecayingValue) => value.currentValue <= 0,
         );
