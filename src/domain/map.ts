@@ -24,6 +24,7 @@ export interface PositionWithDistance {
 }
 
 export class MatchMap {
+    private readonly _spawnPositions: HashSet<Position> = new HashSet();
     private readonly _deliveryPositions: HashSet<Position> = new HashSet();
     private readonly _adjacencyMatrix: HashMap<Position, Position[]> = new HashMap();
 
@@ -42,8 +43,11 @@ export class MatchMap {
         private readonly _spawn: Tile[],
         private readonly _delivery: Tile[],
     ) {
-        const deliveryPositions = this._delivery.map((tile: Tile) => tile.position);
+        const deliveryPositions: Position[] = this._delivery.map((tile: Tile) => tile.position);
         this._deliveryPositions = new HashSet(deliveryPositions);
+
+        const spawnPositions: Position[] = this._spawn.map((tile: Tile) => tile.position);
+        this._spawnPositions = new HashSet(spawnPositions);
     }
 
     /**
@@ -209,10 +213,11 @@ export class MatchMap {
      */
     distanceFromTheClosestDelivery(
         position: Position,
-        occupiedTiles: Position[] = [],
+        occupiedTiles: HashSet<Position> = null,
     ): PositionWithDistance {
         const bestDeliverySites: PositionWithDistance[] = this._delivery
             .map((tile: Tile) => tile.position)
+            .filter((position: Position) => !occupiedTiles?.has(position))
             .map((tilePosition: Position) => {
                 return {
                     position: tilePosition,
@@ -228,7 +233,7 @@ export class MatchMap {
 
         let chosenBestDelivery: PositionWithDistance = null;
         for (const delivery of bestDeliverySites) {
-            if (!!this.calculatePath(position, delivery.position, occupiedTiles)) {
+            if (!!this.calculatePath(position, delivery.position, occupiedTiles?.all)) {
                 chosenBestDelivery = delivery;
                 break;
             }
@@ -271,6 +276,10 @@ export class MatchMap {
 
             this._adjacencyMatrix.set(tile.position, adjacentPositions);
         }
+    }
+
+    isSpawnPosition(position: Position): boolean {
+        return this._spawnPositions.has(position);
     }
 
     isDeliveryPosition(position: Position): boolean {

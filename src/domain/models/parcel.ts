@@ -26,14 +26,14 @@ export class Parcel extends IdAware {
      * @returns TRUE if the package score is 0 or less
      */
     get expired(): boolean {
-        return this.score.getCurrentValue() <= 0;
+        return this.score.currentValue <= 0;
     }
 
     /**
      * @returns the score of the parcel at current time
      */
     get currentScore(): number {
-        return this.score.getCurrentValue();
+        return this.score.currentValue;
     }
 
     /**

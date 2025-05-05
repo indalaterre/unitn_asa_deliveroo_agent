@@ -50,7 +50,7 @@ export class DecayingValue {
      * Compute the value at current time
      * @returns The value.
      */
-    public getCurrentValue(): number {
+    get currentValue(): number {
         return this.getValueByInstant(Instant.now());
     }
 }

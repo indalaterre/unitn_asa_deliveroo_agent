@@ -38,9 +38,9 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
         const graph = new Graph({ allowSelfLoops: true });
 
         //Creating the graph nodes with tile positions
-        for (const tile of tiles) {
-            graph.addNode(tile.position.hashCode(), tile);
-        }
+        tiles
+            .filter((tile: Tile) => tile.walkable)
+            .forEach((tile: Tile) => graph.addNode(tile.position.hashCode(), tile));
 
         //Creating connection between each adjacent node
         graph.forEachNode((tileHash: string, tile: Tile) => {

@@ -1,3 +1,4 @@
+import { HashSet } from "@utils/hashset";
 import type { Hashable } from "@utils/interfaces";
 
 export class HashMap<K extends Hashable, V> {
@@ -46,6 +47,18 @@ export class HashMap<K extends Hashable, V> {
         this._map.delete(key.hashCode());
     }
 
+    /**
+     * Deletes all the entries that fit the predicate
+     * @param predicate
+     */
+    public deleteIf(predicate: (key: K, value: V) => boolean): void {
+        for (const [_, value] of this._map.entries()) {
+            if (predicate(value[0], value[1])) {
+                this._map.delete(value[0].hashCode());
+            }
+        }
+    }
+
     public clear(): void {
         this._map.clear();
     }
@@ -68,6 +81,10 @@ export class HashMap<K extends Hashable, V> {
         for (const [key] of this._map.values()) {
             yield key;
         }
+    }
+
+    public keySet(): HashSet<K> {
+        return new HashSet(Array.from(this.keys()));
     }
 
     public forEach(callback: (value: V, key: K) => void): void {

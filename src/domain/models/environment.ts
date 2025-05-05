@@ -20,11 +20,13 @@ export class Tile implements Hashable {
     /**
      * @param position the tile position
      * @param delivery TRUE if the tile is a delivery position
+     * @param walkable TRUE if the tile is walkable
      * @param spawner  TRUE if the tile is dedicated to parcel spawning
      */
     constructor(
         public readonly spawner: boolean,
         public readonly delivery: boolean,
+        public readonly walkable: boolean,
         public readonly position: Position,
     ) {}
 
@@ -54,7 +56,7 @@ export class Tile implements Hashable {
             const row = Number.parseInt(splits[1]);
             const column = Number.parseInt(splits[2]);
 
-            result = new Tile(false, false, new Position(row, column));
+            result = new Tile(false, false, false, new Position(row, column));
         } catch {
             // TODO: do something ???
         }

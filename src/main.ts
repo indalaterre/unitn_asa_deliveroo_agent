@@ -116,8 +116,6 @@ async function main(): Promise<void> {
         client as Actuator,
         playerInfo,
         gameConfiguration.cryptoKeyPaths,
-        null,
-        gameConfiguration.pddlConfiguration,
     );
 
     console.log(

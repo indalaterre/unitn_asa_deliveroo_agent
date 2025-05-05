@@ -147,10 +147,11 @@ export class SocketClient implements Actuator, Information, Sensor {
     getFreeTiles(): Promise<Tile[]> {
         return new Promise((resolve: (arg0: Tile[]) => void) => {
             this._socket.once("map", (_: number, __: number, tilesData: any[]) => {
-                const tiles = tilesData.map((tile) => {
+                const tiles: Tile[] = tilesData.map((tile) => {
                     return new Tile(
-                        tile.parcelSpawner,
-                        tile.delivery,
+                        tile.parcelSpawner ?? tile.type === 1,
+                        tile.delivery ?? tile.type === 2,
+                        tile.type !== 0,
                         new Position(tile.x, tile.y),
                     );
                 });

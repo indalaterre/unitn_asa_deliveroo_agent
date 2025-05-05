@@ -2,17 +2,10 @@ import { BeliefContainer } from "@domain/beliefs";
 import type { Actuator } from "@domain/communication";
 import type { Sensor } from "@domain/communication/sensor";
 import type { MatchMap, PositionWithDistance } from "@domain/map";
-import {
-    type CryptoConfiguration,
-    type EnvironmentConfiguration,
-    GameConfiguration,
-    type Parcel,
-    type PddlConfiguration,
-} from "@domain/models";
+import { type CryptoConfiguration, GameConfiguration, type Parcel } from "@domain/models";
 import type { Agent } from "@domain/models/agent";
 import { type Directions, Position } from "@domain/models/environment";
 import { Intention, IntentionTypes } from "@domain/models/intention";
-import { PddlSolver } from "@domain/pddl";
 import type { PlayerInfo } from "@domain/player-info";
 import { Cipher } from "@utils/cipher";
 
@@ -26,11 +19,6 @@ export class Player {
      * Cryptographer used to protected messaged exchanged between friends from spies
      */
     private _cipher: Cipher;
-
-    /**
-     * @private The PDDL engine
-     */
-    private _pddlSolver: PddlSolver;
 
     /**
      * Contains all the beliefs of the agent
@@ -50,13 +38,9 @@ export class Player {
         private actuator: Actuator,
         private readonly playerInfo: PlayerInfo,
         cryptoConfiguration: CryptoConfiguration,
-        private readonly environmentConfiguration: EnvironmentConfiguration,
-        private readonly pddlConfiguration: PddlConfiguration,
     ) {
         this._cipher = new Cipher(cryptoConfiguration);
         this._beliefs = new BeliefContainer(playerInfo, matchMap);
-
-        this._pddlSolver = new PddlSolver(pddlConfiguration, this._beliefs);
 
         this.updateKnownParcels(initialParcels);
         sensor.onAgentSensing((agents: Agent[]) => this.updateKnownAgents(agents));
@@ -79,23 +63,43 @@ export class Player {
     private async _run(): Promise<void> {
         while (this._isAlive) {
             await new Promise((resolve) => setImmediate(resolve));
-            await this.goAheadWithChosenPlan();
+
+            this._beliefs.synchronizeKnownAgents();
+            this._beliefs.synchronizeKnownParcels();
+
+            if (this._currentIntention?.shouldGiveUp()) {
+                this._beliefs.giveUpWithIntention(this._currentIntention);
+                this._currentIntention = null;
+            }
 
             const intention: Intention = this._calculateNextAction(this._currentIntention);
             if (!intention) {
+                if (!(await this.goAheadWithChosenPlan())) {
+                    this._currentIntention?.addFailure();
+                }
+
                 continue;
             }
 
             console.log(`Chosen intention: ${intention.toString()}`);
 
-            if (Intention.MOVING_INTENTIONS.includes(intention.type)) {
-                this.calculateShortestPathFromMovingIntention(intention);
-            } else if (intention.type === IntentionTypes.PICK_UP) {
+            if (intention.type === IntentionTypes.PICK_UP) {
                 // PICKUP case
                 await this.executePickUpIntention();
             } else if (intention.type === IntentionTypes.PUT_DOWN) {
                 // PUT DOWN case
                 await this.executePutDownIntention();
+            }
+
+            let success: boolean = await this.goAheadWithChosenPlan();
+            if (Intention.MOVING_INTENTIONS.includes(intention.type)) {
+                success = this.calculateShortestPathFromMovingIntention(
+                    intention,
+                    !success ? this._beliefs.getOccupiedPositions() : [],
+                );
+                if (!success) {
+                    this._currentIntention?.addFailure();
+                }
             }
         }
     }
@@ -118,17 +122,26 @@ export class Player {
     private calculateShortestPathFromMovingIntention(
         intention: Intention,
         positionsToAvoid: Position[] = [],
-    ) {
-        const path: Position[] = this._beliefs.calculateMovingPath(
+    ): boolean {
+        let path: Position[] = this._beliefs.calculateMovingPath(
             intention.position,
             positionsToAvoid,
         );
-        const directions: Directions[] = [];
 
-        // TODO: manage plan not found
         if (!path) {
-            throw new Error("Path not found");
+            //Trying to calculate the path considering also the blocks
+            path = this._beliefs.calculateMovingPath(
+                intention.position,
+                this._beliefs.getOccupiedPositions(),
+            );
+
+            if (!path) {
+                //There is no way to reach the destination. Skipping the intention
+                return false;
+            }
         }
+
+        const directions: Directions[] = [];
 
         for (let i = 0; i < path.length - 1; i++) {
             const direction: Directions = path[i].getDirection(path[i + 1]);
@@ -149,19 +162,28 @@ export class Player {
         };
 
         this._currentIntention = intention;
+
+        return true;
     }
 
-    private async goAheadWithChosenPlan() {
+    private async goAheadWithChosenPlan(): Promise<boolean> {
         if (Intention.MOVING_INTENTIONS.includes(this._currentIntention?.type)) {
             if (this._currentIntention.context.directions?.length) {
-                const nextDirection: Directions = this._currentIntention.context.directions.shift();
+                let nextDirection: Directions = this._currentIntention.context.directions.shift();
                 const nextPosition: Position = this._beliefs.myPosition.moveTo(nextDirection);
 
                 // TODO: This logic can be improved
                 if (this._beliefs.isPositionOccupied(nextPosition)) {
-                    this.calculateShortestPathFromMovingIntention(this._currentIntention, [
-                        nextPosition,
-                    ]);
+                    const success: boolean = this.calculateShortestPathFromMovingIntention(
+                        this._currentIntention,
+                        [nextPosition],
+                    );
+
+                    if (success) {
+                        nextDirection = this._currentIntention.context.directions.shift();
+                    } else {
+                        nextDirection = null;
+                    }
                 }
 
                 if (this._beliefs.isAgentOnDeliveryTile() && this._beliefs.isCarrying) {
@@ -172,23 +194,35 @@ export class Player {
                     await this.executePickUpIntention();
                 }
 
-                console.log(`Moving from: ${this._beliefs.myPosition} to: ${nextPosition}`);
-                await this.actuator.move(nextDirection);
+                if (nextDirection) {
+                    console.log(`Moving from: ${this._beliefs.myPosition} to: ${nextPosition}`);
+                    return await this.actuator.move(nextDirection);
+                }
             } else {
                 //Moving plan has been completed
                 this._currentIntention = null;
             }
+
+            return Promise.resolve(false);
         }
+
+        return Promise.resolve(true);
     }
 
-    private _calculateNextAction(currentIntention: Intention): Intention {
+    private _calculateNextAction(currentIntention: Intention, forceExploration = false): Intention {
+        if (forceExploration) {
+            //Evaluate the best position to explore
+            const explorationSite: Position = this._beliefs.findBestExplorationSite();
+            return Intention.explore(explorationSite);
+        }
+
         const isCarrying: boolean = this._beliefs.isCarrying;
         if (isCarrying) {
             //TODO: this part could be optimized
             const closestDelivery: Position =
                 currentIntention?.type === IntentionTypes.DELIVER
                     ? currentIntention.position
-                    : this._beliefs.findBestDelivery();
+                    : this._beliefs.findBestDelivery()?.position;
 
             if (closestDelivery.equals(this._beliefs.myPosition)) {
                 return Intention.putDown(closestDelivery);
@@ -196,13 +230,13 @@ export class Player {
 
             //Let's check if we have good parcels nearby
             if (this._beliefs.carryingParcelIds?.length < GameConfiguration.maxCarryingParcels) {
-                const newParcel: Position =
+                const newParcel: PositionWithDistance =
                     this._beliefs.findAdditionalParcelWorthToKeep(closestDelivery);
                 if (newParcel) {
-                    if (newParcel.equals(this._beliefs.myPosition)) {
-                        return Intention.pickUp(newParcel);
+                    if (newParcel.position.equals(this._beliefs.myPosition)) {
+                        return Intention.pickUp(newParcel.position);
                     } else {
-                        return Intention.move(newParcel);
+                        return Intention.move(newParcel.position);
                     }
                 } else {
                     return !!closestDelivery ? Intention.deliver(closestDelivery) : null;
@@ -234,11 +268,11 @@ export class Player {
     }
 
     updateKnownParcels(parcels: Parcel[]): void {
-        this._beliefs.synchronizeKnownParcels(parcels);
+        this._beliefs.queueParcelsSynchronization(parcels);
     }
 
     updateKnownAgents(agents: Agent[]): void {
-        this._beliefs.synchronizeKnownAgents(agents);
+        this._beliefs.queueAgentsSynchronization(agents);
     }
 
     updatePlayerPosition(position: Position) {

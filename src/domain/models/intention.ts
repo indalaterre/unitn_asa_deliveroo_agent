@@ -1,4 +1,5 @@
 import type { Position } from "@domain/models/environment";
+import { AbstractHashable } from "@utils/abstract-hashable";
 import type { Hashable } from "@utils/interfaces";
 
 export enum IntentionTypes {
@@ -10,26 +11,35 @@ export enum IntentionTypes {
     DELIVER = 4,
 }
 
-export class Intention implements Hashable {
+export class Intention extends AbstractHashable implements Hashable {
     static readonly MOVING_INTENTIONS: IntentionTypes[] = [
         IntentionTypes.MOVE,
         IntentionTypes.EXPLORE,
         IntentionTypes.DELIVER,
     ];
 
+    private readonly MAX_ALLOWED_FAILURES: number = 2;
+
+    /**
+     * The number of consecutive failures
+     * @private
+     */
+    private _failures = 0;
+
     constructor(
         readonly type: IntentionTypes,
         readonly position: Position,
         public _context?: any,
-    ) {}
+    ) {
+        super();
+    }
 
     /**
      * Generates a MOVE intention for the position
      * @param position  the destination position
-     * @param isDelivering   TRUE if the agent is going to deliver a parcel
      */
-    static move(position: Position, isDelivering = false): Intention {
-        return new Intention(IntentionTypes.MOVE, position, { isDelivering });
+    static move(position: Position): Intention {
+        return new Intention(IntentionTypes.MOVE, position);
     }
 
     /**
@@ -75,8 +85,8 @@ export class Intention implements Hashable {
     /**
      * HashCode method
      */
-    hashCode(): string {
-        return `${IntentionTypes[this.type]}-${this.position.hashCode()}`;
+    protected hashString(): string {
+        return `${IntentionTypes[this.type]}-${this.position.hashCode()}-${JSON.stringify(this.context)}`;
     }
 
     /**
@@ -84,6 +94,14 @@ export class Intention implements Hashable {
      */
     toString(): string {
         return `${IntentionTypes[this.type]} - [${this.position.toString()}]`;
+    }
+
+    addFailure(): void {
+        this._failures++;
+    }
+
+    shouldGiveUp(): boolean {
+        return this.type !== IntentionTypes.EXPLORE && this._failures >= this.MAX_ALLOWED_FAILURES;
     }
 
     get context(): any {
