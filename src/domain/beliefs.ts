@@ -199,7 +199,7 @@ export class BeliefContainer {
             .filter((position: Position) => !blockedDeliveries?.has(position))
             .map((tilePosition: Position) => {
                 const distance = this.map.distanceIfPossible(requestPosition, tilePosition);
-                const agentsDensity = this._agentsDensityOnTile.get(tilePosition);
+                const agentsDensity = this._agentsDensityOnTile.get(tilePosition) ?? 0;
 
                 return {
                     //Weight
@@ -213,8 +213,8 @@ export class BeliefContainer {
             //Sorting descendently to then pop the last element
             .sort(
                 (d1: PositionWithDistance, d2: PositionWithDistance) => {
-                    const { weightedDistance1 } = d1.context;
-                    const { weightedDistance2 } = d2.context;
+                    const weightedDistance1 = d1.context.weightedDistance;
+                    const weightedDistance2 = d2.context.weightedDistance;
                     return weightedDistance1 - weightedDistance2
                 },
             );
