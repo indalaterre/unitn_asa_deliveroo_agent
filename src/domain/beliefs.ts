@@ -210,16 +210,14 @@ export class BeliefContainer {
 
         const filteredCandidates: PositionWithDistance[] = extractFirstElementsInSortedArray(
             candidates,
-            (a, b) => a.distance === b.distance,
+            (a, b) => a.context.weightedScore === b.context.weightedScore,
         );
+
         const candidatePosition: PositionWithDistance = filteredCandidates.shift();
 
-        if (filteredCandidates.length > 1) {
-            const ignoredCandidates: PositionWithDistance[] = filteredCandidates.slice(1);
-            ignoredCandidates.forEach((ignoredCandidate: PositionWithDistance) => {
-                this._notWorthParcels.add(ignoredCandidate.context.parcel);
-            });
-        }
+        filteredCandidates.forEach((ignoredCandidate: PositionWithDistance) => {
+            this._notWorthParcels.add(ignoredCandidate.context.parcel);
+        });
 
         return candidatePosition;
     }
