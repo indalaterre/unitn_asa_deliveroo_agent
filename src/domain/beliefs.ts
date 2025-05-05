@@ -210,16 +210,13 @@ export class BeliefContainer {
             })
             //Removing not reachable delivery tiles
             .filter((d): d is PositionWithDistance & { distance: number } => d.distance != null)
-            .map((d: PositionWithDistance) => {
-                const agentsDensityMalus: number = this._agentsDensityOnTile.get(d.position);
-                return {
-                    ...d,
-                    distance: d.distance + agentsDensityMalus,
-                } as PositionWithDistance;
-            })
             //Sorting descendently to then pop the last element
             .sort(
-                (d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance,
+                (d1: PositionWithDistance, d2: PositionWithDistance) => {
+                    const { weightedDistance1 } = d1.context;
+                    const { weightedDistance2 } = d2.context;
+                    return weightedDistance1 - weightedDistance2
+                },
             );
 
         let chosenBestDelivery: PositionWithDistance = null;
