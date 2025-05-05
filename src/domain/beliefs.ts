@@ -5,6 +5,7 @@ import { DecayingValue } from "@domain/models/decaying-value";
 import type { Position, Tile } from "@domain/models/environment";
 import { type Intention, IntentionTypes } from "@domain/models/intention";
 import type { PlayerInfo } from "@domain/player-info";
+import { extractFirstElementsInSortedArray } from "@utils/functions";
 import { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
 import { MultiValueHashMap } from "@utils/multivaluehashmap";
@@ -158,7 +159,7 @@ export class BeliefContainer {
     get bestParcelToDeliver(): PositionWithDistance {
         const moveScoreCost: number = GameConfiguration.moveScoreCost;
 
-        return Array.from(this.freeParcelsById.values())
+        const candidates: PositionWithDistance[] = Array.from(this.freeParcelsById.values())
             .filter(
                 (parcel: Parcel) =>
                     this.parcelsDistancesToCloserDelivery.has(parcel.id) &&
@@ -177,23 +178,23 @@ export class BeliefContainer {
                     this.parcelsDistancesToCloserDelivery.get(parcel.id).position,
                 );
 
-                if(toParcelPath && parcelToDeliveryPath) {
+                if (toParcelPath && parcelToDeliveryPath) {
                     const totalPathLength = toParcelPath.length + parcelToDeliveryPath.length;
 
-                    const parcelsScore =
-                        this.parcelsByPosition.get(parcel.position).all
-                            .reduce((acc, curr) => acc + curr.currentScore, 0);
+                    const parcelsScore = this.parcelsByPosition
+                        .get(parcel.position)
+                        .all.reduce((acc, curr) => acc + curr.currentScore, 0);
 
                     const deliveryScore = parcelsScore - totalPathLength * moveScoreCost;
 
-                    if(deliveryScore > 0) {
+                    if (deliveryScore > 0) {
                         return {
                             context: {
                                 parcel,
-                                weightedScore: totalPathLength - deliveryScore
+                                weightedScore: totalPathLength - deliveryScore,
                             },
                             position: parcel.position,
-                            distance: toParcelPath.length
+                            distance: toParcelPath.length,
                         } as PositionWithDistance;
                     }
                 }
@@ -205,8 +206,22 @@ export class BeliefContainer {
                 const weightedScore1 = d1.context.weightedScore;
                 const weightedScore2 = d2.context.weightedScore;
                 return weightedScore1 - weightedScore2;
-            })
-            .shift();
+            });
+
+        const filteredCandidates: PositionWithDistance[] = extractFirstElementsInSortedArray(
+            candidates,
+            (a, b) => a.distance === b.distance,
+        );
+        const candidatePosition: PositionWithDistance = filteredCandidates.shift();
+
+        if (filteredCandidates.length > 1) {
+            const ignoredCandidates: PositionWithDistance[] = filteredCandidates.slice(1);
+            ignoredCandidates.forEach((ignoredCandidate: PositionWithDistance) => {
+                this._notWorthParcels.add(ignoredCandidate.context.parcel);
+            });
+        }
+
+        return candidatePosition;
     }
 
     updateDroppedParcels(parcelIds: Set<string>): void {
@@ -238,13 +253,11 @@ export class BeliefContainer {
             //Removing not reachable delivery tiles
             .filter((d): d is PositionWithDistance & { distance: number } => d.distance != null)
             //Sorting descendently to then pop the last element
-            .sort(
-                (d1: PositionWithDistance, d2: PositionWithDistance) => {
-                    const weightedDistance1 = d1.context.weightedDistance;
-                    const weightedDistance2 = d2.context.weightedDistance;
-                    return weightedDistance1 - weightedDistance2
-                },
-            );
+            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => {
+                const weightedDistance1 = d1.context.weightedDistance;
+                const weightedDistance2 = d2.context.weightedDistance;
+                return weightedDistance1 - weightedDistance2;
+            });
 
         let chosenBestDelivery: PositionWithDistance = null;
         for (const delivery of bestDeliverySites) {
@@ -274,7 +287,7 @@ export class BeliefContainer {
                     parcel.position,
                 );
 
-                if(toParcelPath) {
+                if (toParcelPath) {
                     return {
                         context: parcel,
                         position: parcel.position,
@@ -296,7 +309,7 @@ export class BeliefContainer {
         //The cost associated to each deviation step
         const moveScoreCost: number = GameConfiguration.moveScoreCost;
 
-        const toParcelPathLength: number = candidatePosition.distance
+        const toParcelPathLength: number = candidatePosition.distance;
         const parcelToDeliveryPath: Position[] = this.map.calculatePath(
             freeParcel.position,
             this.parcelsDistancesToCloserDelivery.get(freeParcel.id).position,
@@ -328,7 +341,9 @@ export class BeliefContainer {
         return this.visitedTiles
             .entryArray()
             .filter(([position, _]: [Position, number]) => this.map.isSpawnPosition(position))
-            .filter(([position, _]: [Position, number]) => !this._temporaryBlockedExplore.has(position))
+            .filter(
+                ([position, _]: [Position, number]) => !this._temporaryBlockedExplore.has(position),
+            )
             .map(([position, visits]: [Position, number]) => {
                 const distance: number = this._ownPosition.manhattanDistance(position);
                 const agentsDensityMalus: number = this._agentsDensityOnTile.get(position);

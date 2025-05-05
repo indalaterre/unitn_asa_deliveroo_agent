@@ -35,10 +35,21 @@ services:
       - LEVEL=challenge_23
       - PORT=4001
 
-  default_map:
+  level_3:
     image: it.unitn.deliveroojs
     ports:
       - "4006:4001"
+    network_mode: bridge
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=level_3
+      - PORT=4001
+
+  default_map:
+    image: it.unitn.deliveroojs
+    ports:
+      - "4007:4001"
     network_mode: bridge
     restart: unless-stopped
 
