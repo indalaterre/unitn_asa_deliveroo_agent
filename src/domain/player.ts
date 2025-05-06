@@ -1,15 +1,15 @@
-import { BeliefContainer } from "@domain/beliefs";
-import type { Actuator } from "@domain/communication";
-import type { Sensor } from "@domain/communication/sensor";
-import type { MatchMap, PositionWithDistance } from "@domain/map";
-import { type CryptoConfiguration, GameConfiguration, type Parcel } from "@domain/models";
-import type { Agent } from "@domain/models/agent";
-import { type Directions, Position } from "@domain/models/environment";
-import { Intention, IntentionTypes } from "@domain/models/intention";
-import { IntentionQueue } from "@domain/models/intention-queue";
-import { StatisticsLogger } from "@domain/models/statistics-logger";
-import type { PlayerInfo } from "@domain/player-info";
-import { Cipher } from "@utils/cipher";
+import {BeliefContainer} from "@domain/beliefs";
+import type {Actuator} from "@domain/communication";
+import type {Sensor} from "@domain/communication/sensor";
+import type {MatchMap, PositionWithDistance} from "@domain/map";
+import {type CryptoConfiguration, GameConfiguration, type Parcel} from "@domain/models";
+import type {Agent} from "@domain/models/agent";
+import {type Directions, Position} from "@domain/models/environment";
+import {Intention, IntentionTypes} from "@domain/models/intention";
+import {IntentionQueue} from "@domain/models/intention-queue";
+import {StatisticsLogger} from "@domain/models/statistics-logger";
+import type {PlayerInfo} from "@domain/player-info";
+import {Cipher} from "@utils/cipher";
 
 export class Player {
     /**
@@ -279,6 +279,7 @@ export class Player {
     private calculateShortestPathFromMovingIntention(
         intention: Intention,
         positionsToAvoid: Position[] = [],
+        resetFailures: boolean = true
     ): boolean {
         let path: Position[] = this._beliefs.calculateMovingPath(
             intention.position,
@@ -316,7 +317,7 @@ export class Player {
         };
 
         // Reset failures when we successfully calculate a new path
-        intention.resetFailures();
+        resetFailures && intention.resetFailures();
         this._currentIntention = intention;
 
         return true;
@@ -330,22 +331,11 @@ export class Player {
 
                 // Check if the next position is occupied by another agent
                 if (this._beliefs.isPositionOccupied(nextPosition)) {
-                    // Try to recalculate path avoiding the blocked position
-                    const success: boolean = this.calculateShortestPathFromMovingIntention(
-                        this._currentIntention,
-                        [nextPosition],
-                    );
-
-                    if (success) {
-                        // If we found an alternative path, use the first step of that path
-                        nextDirection = this._currentIntention.context.directions.shift();
+                    if (this.handleIntentionFailure(this._currentIntention, "Position occupied", nextPosition)) {
+                        this._currentIntention = null;
+                        return Promise.resolve(false);
                     } else {
-                        // If we couldn't find an alternative path, handle the failure
-                        if (this.handleIntentionFailure(this._currentIntention, "Position occupied")) {
-                            this._currentIntention = null;
-                            return Promise.resolve(false);
-                        }
-                        nextDirection = null;
+                        nextDirection = this._currentIntention.context.directions.shift();
                     }
                 }
 
@@ -391,14 +381,41 @@ export class Player {
      * Centralized method to handle intention failures
      * @param intention The intention that failed
      * @param reason Optional reason for the failure
+     * @param occupiedPosition Optional position that caused the failure
      * @returns True if the intention should be abandoned, false otherwise
      */
-    private handleIntentionFailure(intention: Intention, reason?: string): boolean {
+    private handleIntentionFailure(intention: Intention, reason?: string, occupiedPosition?: Position): boolean {
         if (!intention) return false;
         
         intention.addFailure();
 
         // Special handling for different intention types
+        if (intention.type === IntentionTypes.DELIVER) {
+            // For delivery intentions, check if failure is due to an agent
+            const isAgentBlocking = reason === "Position occupied";
+
+            // If an agent is blocking and this is the first or second failure,
+            // don't give up yet - try to recalculate the path
+            if (isAgentBlocking && intention.getFailureCount() < 3) {
+                console.log("Agent blocking delivery path, trying alternative route...");
+
+                //TODO: We need to fix the failures reset
+                const occupiedPositions: Position[] = occupiedPosition ? [occupiedPosition] : [];
+                const success = this.calculateShortestPathFromMovingIntention(intention, occupiedPositions, false);
+                if (success) {
+                    return false; // Don't give up on the intention yet
+                }
+
+                // If it's not an agent blocking or we've tried too many times or recalculation failed,
+                // give up on this intention
+                if (intention.hasFailed() || intention.getFailureCount() >= 3) {
+                    this._beliefs.giveUpWithIntention(intention);
+                    this._intentionQueue.remove(intention);
+                    this._checkAndRecalculateIntentions();
+                    return true;
+                }
+            }
+        }
         if (intention.type === IntentionTypes.DELIVER && intention.hasFailed()) {
             // For delivery intentions, give up after the first failure
             this._beliefs.giveUpWithIntention(intention);
