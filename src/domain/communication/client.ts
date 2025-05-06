@@ -1,7 +1,7 @@
 import { type Socket, io } from "socket.io-client";
 
 import type { Actuator } from "@domain/communication/actuator";
-import { Directions, Position, Tile } from "@domain/models/environment";
+import {Directions, Position, Tile, TileType} from "@domain/models/environment";
 
 import * as console from "node:console";
 import type { Information } from "@domain/communication/information";
@@ -55,7 +55,7 @@ export class SocketClient implements Actuator, Information, Sensor {
     onParcelDetected(callback: (parcels: Parcel[]) => void): void {
         this._socket.on("parcels sensing", (detectedParcels: any) => {
             if (!detectedParcels?.length) {
-                return;
+                callback([]);
             }
 
             const parcels: Parcel[] = detectedParcels.map((parcel: any) => {
@@ -149,9 +149,9 @@ export class SocketClient implements Actuator, Information, Sensor {
             this._socket.once("map", (_: number, __: number, tilesData: any[]) => {
                 const tiles: Tile[] = tilesData.map((tile) => {
                     return new Tile(
-                        tile.parcelSpawner ?? tile.type === 1,
-                        tile.delivery ?? tile.type === 2,
-                        tile.type !== 0,
+                        tile.parcelSpawner ?? tile.type === TileType.SPAWN,
+                        tile.delivery ?? tile.type === TileType.DELIVERY,
+                        tile.type !== TileType.NON_WALKABLE,
                         new Position(tile.x, tile.y),
                     );
                 });
@@ -236,10 +236,6 @@ export class SocketClient implements Actuator, Information, Sensor {
 
     putDown(parcelsToPutDown: string[] | null): Promise<Set<string>> {
         return new Promise((resolve, _reject) => {
-            if (!parcelsToPutDown?.length) {
-                console.log("No parcels to put down. Action will be ignored");
-            }
-
             this._socket.emit("putdown", parcelsToPutDown, (response: any[]) => {
                 const putDownParcels: Set<string> = new Set<string>();
                 for (const parcel of response) {

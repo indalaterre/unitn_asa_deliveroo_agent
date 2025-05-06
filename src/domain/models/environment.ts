@@ -13,6 +13,13 @@ export enum Directions {
     NONE = "none",
 }
 
+export enum TileType {
+    NON_WALKABLE = 0,
+    SPAWN = 1,
+    DELIVERY = 2,
+    WALKABLE = 3,
+}
+
 /**
  * Models a tile (the map unit component)
  */

@@ -2,11 +2,20 @@ name: deliveroojs
 
 services:
 
+  24c1_1-1:
+    image: it.unitn.deliveroojs
+    ports:
+      - "4001:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=24c1_1-1
+      - PORT=4001
+
   24c1_9:
     image: it.unitn.deliveroojs
     ports:
       - "4003:4001"
-    network_mode: bridge
     restart: unless-stopped
 
     environment:
@@ -17,7 +26,6 @@ services:
     image: it.unitn.deliveroojs
     ports:
       - "4004:4001"
-    network_mode: bridge
     restart: unless-stopped
 
     environment:
@@ -28,18 +36,26 @@ services:
     image: it.unitn.deliveroojs
     ports:
       - "4005:4001"
-    network_mode: bridge
     restart: unless-stopped
 
     environment:
       - LEVEL=challenge_23
       - PORT=4001
 
+  challenge_32:
+    image: it.unitn.deliveroojs
+    ports:
+      - "4015:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=challenge_32
+      - PORT=4001
+
   level_3:
     image: it.unitn.deliveroojs
     ports:
       - "4006:4001"
-    network_mode: bridge
     restart: unless-stopped
 
     environment:
@@ -50,7 +66,6 @@ services:
     image: it.unitn.deliveroojs
     ports:
       - "4007:4001"
-    network_mode: bridge
     restart: unless-stopped
 
     environment:

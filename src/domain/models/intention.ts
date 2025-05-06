@@ -18,7 +18,7 @@ export class Intention extends AbstractHashable implements Hashable {
         IntentionTypes.DELIVER,
     ];
 
-    private readonly MAX_ALLOWED_FAILURES: number = 2;
+    readonly MAX_ALLOWED_FAILURES: number = 2;
 
     /**
      * The number of consecutive failures
@@ -100,6 +100,27 @@ export class Intention extends AbstractHashable implements Hashable {
         this._failures++;
     }
 
+    /**
+     * Returns the current number of consecutive failures
+     */
+    getFailureCount(): number {
+        return this._failures;
+    }
+
+    /**
+     * Resets the failure counter to zero
+     */
+    resetFailures(): void {
+        this._failures = 0;
+    }
+
+    /**
+     * Checks if the intention has failed at least once
+     */
+    hasFailed(): boolean {
+        return this._failures > 0;
+    }
+
     shouldGiveUp(): boolean {
         return this._failures >= this.MAX_ALLOWED_FAILURES;
     }
@@ -110,5 +131,13 @@ export class Intention extends AbstractHashable implements Hashable {
 
     set context(value: any) {
         this._context = value;
+    }
+    
+    /**
+     * Checks if this intention has context information
+     * @returns True if the intention has context
+     */
+    hasContext(): boolean {
+        return !!this._context;
     }
 }

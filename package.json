@@ -17,6 +17,7 @@
     "build": "tsx esbuild.config.ts",
     "start": "node dist/main.js",
     "start:dev": "npm run build && npm run start",
+    "start:agent": "npm run build && node dist/main.js --agent-name",
     "pre-commit": "bione ci src/",
     "lint": "biome check src/",
     "lint-fix": "biome check --write src/"
