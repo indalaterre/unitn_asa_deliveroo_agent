@@ -331,11 +331,37 @@ export class Player {
 
                 // Check if the next position is occupied by another agent
                 if (this._beliefs.isPositionOccupied(nextPosition)) {
+                    console.log(`Position ${nextPosition.toString()} is occupied by another agent`);
+                    
+                    // Always count this as a failure for the intention
+                    this._currentIntention.addFailure();
+                    
+                    // For DELIVER intentions, be more aggressive about giving up
+                    if (this._currentIntention.type === IntentionTypes.DELIVER && 
+                        this._currentIntention.getFailureCount() >= 2) {
+                        console.log(`Giving up on delivery intention after ${this._currentIntention.getFailureCount()} failures due to blocked path`);
+                        this._beliefs.giveUpWithIntention(this._currentIntention);
+                        this._intentionQueue.remove(this._currentIntention);
+                        this._currentIntention = null;
+                        return Promise.resolve(false);
+                    }
+                    
+                    // For other intentions, use the standard handler
                     if (this.handleIntentionFailure(this._currentIntention, "Position occupied", nextPosition)) {
                         this._currentIntention = null;
                         return Promise.resolve(false);
-                    } else {
+                    } else if (this._currentIntention.context.directions?.length) {
+                        // Only try to get the next direction if there are directions left
                         nextDirection = this._currentIntention.context.directions.shift();
+                    } else {
+                        // If no directions left, recalculate path
+                        if (!this.calculateShortestPathFromMovingIntention(this._currentIntention, [nextPosition])) {
+                            // If recalculation fails, give up
+                            this.handleIntentionFailure(this._currentIntention, "Cannot recalculate path");
+                            this._currentIntention = null;
+                            return Promise.resolve(false);
+                        }
+                        return Promise.resolve(true); // Try again next cycle with new path
                     }
                 }
 
@@ -389,44 +415,31 @@ export class Player {
         
         intention.addFailure();
 
-        // Special handling for different intention types
+        // Special handling for DELIVER intentions
         if (intention.type === IntentionTypes.DELIVER) {
-            // For delivery intentions, check if failure is due to an agent
             const isAgentBlocking = reason === "Position occupied";
-
-            // If an agent is blocking and this is the first or second failure,
-            // don't give up yet - try to recalculate the path
+            
+            // Only try to recalculate path for agent blocking with few failures
             if (isAgentBlocking && intention.getFailureCount() < 3) {
                 console.log("Agent blocking delivery path, trying alternative route...");
-
-                //TODO: We need to fix the failures reset
+                
                 const occupiedPositions: Position[] = occupiedPosition ? [occupiedPosition] : [];
                 const success = this.calculateShortestPathFromMovingIntention(intention, occupiedPositions, false);
                 if (success) {
                     return false; // Don't give up on the intention yet
                 }
-
-                // If it's not an agent blocking or we've tried too many times or recalculation failed,
-                // give up on this intention
-                if (intention.hasFailed() || intention.getFailureCount() >= 3) {
-                    this._beliefs.giveUpWithIntention(intention);
-                    this._intentionQueue.remove(intention);
-                    this._checkAndRecalculateIntentions();
-                    return true;
-                }
             }
-        }
-        if (intention.type === IntentionTypes.DELIVER && intention.hasFailed()) {
-            // For delivery intentions, give up after the first failure
+            
+            // In all other cases for DELIVER intentions, give up
+            // This includes: non-agent blocking failures, too many failures, or path recalculation failed
+            console.log(`Giving up on delivery intention after ${intention.getFailureCount()} failures`);
             this._beliefs.giveUpWithIntention(intention);
-            
-            // Remove this intention from the queue if it exists there
             this._intentionQueue.remove(intention);
-            
-            // Check if we need to recalculate intentions
             this._checkAndRecalculateIntentions();
             return true;
-        } else if (intention.type === IntentionTypes.MOVE && intention.getFailureCount() >= 2) {
+        }
+        // Handle MOVE intentions
+        else if (intention.type === IntentionTypes.MOVE && intention.getFailureCount() >= 2) {
             // For move intentions, be a bit more persistent but still give up earlier
             this._beliefs.giveUpWithIntention(intention);
             
@@ -438,8 +451,8 @@ export class Player {
             return true;
         }
         
-        // For other intentions or if not enough failures yet, use the standard threshold
-        if (intention.shouldGiveUp()) {
+        // For other intentions, use the standard threshold
+        else if (intention.shouldGiveUp()) {
             this._beliefs.giveUpWithIntention(intention);
             
             // Remove this intention from the queue if it exists there

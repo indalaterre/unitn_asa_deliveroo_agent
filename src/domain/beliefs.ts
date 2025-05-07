@@ -759,6 +759,9 @@ export class BeliefContainer {
         // Collect opponent positions for delivery point congestion tracking
         const opponentPositions: Position[] = [];
         
+        // Clear existing position mappings to prevent stale data
+        this.agentsByPosition.clear();
+        
         // Process existing agents (opponents)
         for (const agent of this.agents.values()) {
             // Skip our own agent
@@ -767,6 +770,10 @@ export class BeliefContainer {
             // Add opponent position to the list for delivery point congestion calculation
             if (agent.position) {
                 opponentPositions.push(agent.position);
+                
+                // Update position mappings
+                this.agentsByPosition.set(agent.position, agent);
+                this.positionByAgent.set(agent, agent.position);
             }
             
             // Update agent density for all positions in radius
@@ -778,17 +785,42 @@ export class BeliefContainer {
 
         // Adding new agents
         for (const agent of this._agentsToBeSynchronized.all) {
-            // Use the new factory method to create ObservedAgent from Agent
-            const observedAgent = ObservedAgent.fromAgent(agent);
-            this.agents.set(agent.agentId, observedAgent);
-            this.agentsByPosition.set(agent.position, agent);
-            this.positionByAgent.set(agent, agent.position);
+            // Check if we already have this agent
+            const existingAgent = this.agents.get(agent.agentId);
+            if (existingAgent) {
+                // Update the existing agent's position
+                if (existingAgent.position && !existingAgent.position.equals(agent.position)) {
+                    // Remove old position mapping
+                    this.agentsByPosition.delete(existingAgent.position);
+                    
+                    // Update position
+                    existingAgent.position = agent.position;
+                    existingAgent.lastSeen = Instant.now();
+                    
+                    // Update position mappings
+                    this.agentsByPosition.set(agent.position, agent);
+                    this.positionByAgent.set(agent, agent.position);
+                }
+            } else {
+                // Create new observed agent
+                const observedAgent = ObservedAgent.fromAgent(agent);
+                this.agents.set(agent.agentId, observedAgent);
+                
+                // Update position mappings
+                if (agent.position) {
+                    this.agentsByPosition.set(agent.position, agent);
+                    this.positionByAgent.set(agent, agent.position);
+                }
+            }
             
             // Add to opponent positions if it's not our agent
             if (agent.agentId !== this._ownId && agent.position) {
                 opponentPositions.push(agent.position);
             }
         }
+        
+        // Make sure our own position is not marked as occupied
+        this.agentsByPosition.delete(this._ownPosition);
         
         // Update delivery point manager with current opponent positions and our position
         this._deliveryPointManager.updateOpponentPositions(opponentPositions, this._ownPosition);
