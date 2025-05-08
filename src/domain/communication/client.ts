@@ -11,15 +11,25 @@ import { Agent } from "@domain/models/agent";
 import { DecayingValue } from "@domain/models/decaying-value";
 import { IdAware } from "@domain/models/id-aware";
 import { PlayerInfo } from "@domain/player-info";
+import type { CryptoConfiguration } from "@domain/models/configurations";
+import { Cipher } from "@domain/communication/cipher";
+import {AgentPositionUpdate, HelloMessage, Message, Messenger, ParcelInfoMessage} from "./messenger";
 
-export class SocketClient implements Actuator, Information, Sensor {
+export class SocketClient implements Actuator, Information, Sensor, Messenger {
     private readonly _socket: Socket;
+    private readonly _cipher: Cipher;
 
-    constructor(deliverooHost: string, token: string) {
+    constructor(
+        deliverooHost: string,
+        token: string,
+        cryptoConfiguration: CryptoConfiguration,
+    ) {
         this._socket = io(deliverooHost, {
             autoConnect: true,
             extraHeaders: { "x-token": token },
         });
+
+        this._cipher = new Cipher(cryptoConfiguration);
     }
 
     move(direction: Directions): Promise<boolean> {
@@ -246,4 +256,66 @@ export class SocketClient implements Actuator, Information, Sensor {
             });
         });
     }
+
+    // MESSENGER METHODS
+
+    shoutHelloMessage(message: HelloMessage): Promise<void> {
+        return this.shoutMessage(message);
+    }
+
+    onHelloMessageReceived(callback: (agent: Agent) => void): void {
+        this.onMessageReceived((message: HelloMessage) => {
+            callback(new Agent(message.senderId, message.position, message.score))
+        })
+    }
+
+    shoutParcelInfo(message: ParcelInfoMessage): Promise<void> {
+        return this.shoutMessage(message);
+    }
+
+    onParcelInfoReceived(callback: (parcels: Parcel[]) => void): void {
+        this.onMessageReceived((message: ParcelInfoMessage) => {
+            const parsedParcels: Parcel[] =
+                message.parcels.map((parcel) => {
+                    return new Parcel(
+                        parcel.id,
+                        new IdAware(parcel.agentId),
+                        parcel.position,
+                        new DecayingValue(parcel.score));
+
+                });
+
+            callback(parsedParcels);
+        })
+    }
+
+    shoutAgentsInfo(message: AgentPositionUpdate): Promise<void> {
+        return this.shoutMessage(message);
+    }
+
+    onAgentsInfoReceived(callback: (agents: Agent[]) => void): void {
+        this.onMessageReceived((message: AgentPositionUpdate) => {
+            const parsedAgents: Agent[] =
+                message.agents.map((agent) => {
+                    return new Agent(agent.agentId, agent.position, agent.score);
+                });
+
+            callback(parsedAgents);
+        })
+    }
+
+    private shoutMessage(message: Message): Promise<void> {
+        return new Promise((resolve, _reject) => {
+            const encrypted = this._cipher.encryptObject(message);
+            this._socket.emit("shout", encrypted, resolve);
+        })
+    }
+
+    private onMessageReceived(callback: (message: Message) => void): void {
+        this._socket.on("msg", (encryptedMessage: string) => {
+            const message: Message = this._cipher.decryptObject(encryptedMessage);
+            callback(message);
+        });
+    }
+
 }

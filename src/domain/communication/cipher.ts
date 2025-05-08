@@ -29,4 +29,13 @@ export class Cipher {
         const buffer = Buffer.from(encryptedMessage, "utf8");
         return privateDecrypt(this.privateKey, buffer).toString("utf8");
     }
+
+    encryptObject(obj: any): string {
+        return this.encrypt(JSON.stringify(obj));
+    }
+
+    decryptObject<T>(encryptedMessage: string): T {
+        const decrypted = this.decrypt(encryptedMessage);
+        return JSON.parse(decrypted) as T;
+    }
 }

@@ -26,6 +26,12 @@ export class BeliefContainer {
     private _ownPosition: Position;
 
     /**
+     * The current agent score
+     * @private
+     */
+    private _ownScore: number;
+
+    /**
      * @private The ID of the carried parcels (if any)
      */
     private _carriedParcels: Parcel[] = [];
@@ -162,6 +168,10 @@ export class BeliefContainer {
      */
     get myPosition(): Position {
         return this._ownPosition;
+    }
+
+    get myScore(): number {
+        return this._ownScore;
     }
 
     /**

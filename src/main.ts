@@ -13,6 +13,7 @@ import {
     type PddlConfiguration,
 } from "@domain/models/configurations";
 import { Player } from "@domain/player";
+import {Messenger} from "@domain/communication/messenger";
 
 function getConfiguration(): AgentConfiguration {
     const options = [
@@ -114,8 +115,8 @@ async function main(): Promise<void> {
         initialParcels,
         client as Sensor,
         client as Actuator,
+        client as Messenger,
         playerInfo,
-        gameConfiguration.cryptoKeyPaths,
     );
 
     console.log(

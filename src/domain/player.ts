@@ -2,25 +2,21 @@ import {BeliefContainer} from "@domain/beliefs";
 import type {Actuator} from "@domain/communication";
 import type {Sensor} from "@domain/communication/sensor";
 import type {MatchMap, PositionWithDistance} from "@domain/map";
-import {type CryptoConfiguration, GameConfiguration, type Parcel} from "@domain/models";
+import {GameConfiguration, type Parcel} from "@domain/models";
 import type {Agent} from "@domain/models/agent";
 import {type Directions, Position} from "@domain/models/environment";
 import {Intention, IntentionTypes} from "@domain/models/intention";
 import {IntentionQueue} from "@domain/models/intention-queue";
 import {StatisticsLogger} from "@domain/models/statistics-logger";
 import type {PlayerInfo} from "@domain/player-info";
-import {Cipher} from "@utils/cipher";
+import {MessageFactory} from "@domain/communication/message-factory";
+import {HelloMessage, Messenger} from "@domain/communication/messenger";
 
 export class Player {
     /**
      * TRUE if the player is alive and able to play
      */
     private _isAlive = false;
-
-    /**
-     * Cryptographer used to protected messaged exchanged between friends from spies
-     */
-    private _cipher: Cipher;
 
     /**
      * Contains all the beliefs of the agent
@@ -49,17 +45,31 @@ export class Player {
         matchMap: MatchMap,
         initialParcels: Parcel[],
         sensor: Sensor,
-        private actuator: Actuator,
+        private readonly actuator: Actuator,
+        private readonly messenger: Messenger,
         private readonly playerInfo: PlayerInfo,
-        cryptoConfiguration: CryptoConfiguration,
     ) {
-        this._cipher = new Cipher(cryptoConfiguration);
         this._beliefs = new BeliefContainer(playerInfo, matchMap);
 
         this.updateKnownParcels(initialParcels);
-        sensor.onAgentSensing((agents: Agent[]) => this.updateKnownAgents(agents));
-        sensor.onParcelDetected((parcels: Parcel[]) => this.updateKnownParcels(parcels));
+
         sensor.onPlayerPositionUpdate((position: Position) => this.updatePlayerPosition(position));
+        sensor.onAgentSensing(async (agents: Agent[]) => {
+            this.updateKnownAgents(agents)
+            await this.messenger
+                .shoutAgentsInfo(
+                    MessageFactory.createAgentsUpdateMessage(playerInfo.id.toString(), agents))
+        });
+
+        sensor.onParcelDetected(async (parcels: Parcel[]) => {
+            this.updateKnownParcels(parcels);
+            await this.messenger
+                .shoutParcelInfo(
+                    MessageFactory.createParcelInfoMessage(playerInfo.id.toString(), parcels));
+        });
+
+        messenger.onAgentsInfoReceived((agents: Agent[]) => this.updateKnownAgents(agents));
+        messenger.onParcelInfoReceived((parcels: Parcel[]) => this.updateKnownParcels(parcels));
     }
 
     async start(): Promise<void> {
@@ -73,8 +83,14 @@ export class Player {
                 clearInterval(statsInterval);
             }
         }, 10000); // Log every 10 seconds
-        
-        await this._run();
+
+        const helloMessage: HelloMessage =
+            MessageFactory.createHelloMessage(
+                this.playerInfo.id.serialize(),
+                this._beliefs.myPosition,
+                this._beliefs.myScore)
+
+        await Promise.all([this.messenger.shoutHelloMessage(helloMessage), this._run()]);
     }
 
     stop(): void {
@@ -194,9 +210,7 @@ export class Player {
                     
                     // Force recalculation of intentions after putting down parcels
                     this._checkAndRecalculateIntentions(true);
-                } else if (this._currentIntention.type === IntentionTypes.MOVE || 
-                           this._currentIntention.type === IntentionTypes.EXPLORE || 
-                           this._currentIntention.type === IntentionTypes.DELIVER) {
+                } else if (Intention.MOVING_INTENTIONS.includes(this._currentIntention.type)) {
                     // MOVE, EXPLORE, DELIVER cases
                     if (!this._currentIntention.hasContext()) {
                         // Calculate path for the intention
