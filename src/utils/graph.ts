@@ -33,14 +33,14 @@ export type AStarHeuristicFn = (from: Position, end: Position) => number;
 export class Graph extends UndirectedGraph<Tile, Edge> {
     // Path cache for frequently accessed paths
     private _pathCache: Map<string, Position[]> = new Map<string, Position[]>();
-    
+
     private readonly PATH_CACHE_SIZE_LIMIT = 1000;
     /**
      * Transforms the map into a graph in which each node as up to 4 connections (one per every accessible direction)
      */
     public static async buildGraph(tiles: Tile[]): Promise<Graph> {
         const graph = new Graph({ allowSelfLoops: true });
-        
+
         // Clear path cache when building a new graph
         graph.clearPathCache();
 
@@ -108,17 +108,17 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
 
         // Verify bidirectional edges for consistency
         graph.verifyBidirectionalEdges();
-        
+
         return graph;
     }
-    
+
     /**
      * Clears the path cache
      */
     public clearPathCache(): void {
         this._pathCache.clear();
     }
-    
+
     /**
      * Invalidates path cache entries involving a specific position
      * @param position The position to invalidate cache for
@@ -127,37 +127,37 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
     private _invalidatePathCacheForPosition(position: Position): void {
         const positionHash = position.hashCode();
         const keysToRemove: string[] = [];
-        
+
         for (const key of this._pathCache.keys()) {
             if (key.includes(positionHash)) {
                 keysToRemove.push(key);
             }
         }
-        
+
         for (const key of keysToRemove) {
             this._pathCache.delete(key);
         }
     }
-    
+
     /**
      * Verifies that all edges are bidirectional and fixes any inconsistencies
      */
     public verifyBidirectionalEdges(): void {
         const edgesToAdd: [string, string, Edge][] = [];
-        
+
         this.forEachEdge((edge: string, attributes: Edge, source: string, target: string) => {
             // Check if the reverse edge exists with the same attributes
             if (!this.hasEdge(target, source)) {
                 edgesToAdd.push([target, source, attributes]);
             }
         });
-        
+
         // Add any missing edges
         for (const [source, target, attributes] of edgesToAdd) {
             this.addUndirectedEdge(source, target, attributes);
         }
     }
-    
+
     /**
      * Updates edge weights based on congestion or other factors
      * @param position The position to update weights for
@@ -165,54 +165,54 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
      */
     public updateEdgeWeights(position: Position, congestionMap: Map<string, number>): void {
         const positionHash = position.hashCode();
-        
+
         this.forEachNeighbor(positionHash, (neighborHash: string) => {
             if (!this.isNeighbor(positionHash, neighborHash)) {
                 return;
             }
-            
+
             // Calculate new weight based on congestion
             let weight = 1; // Base weight
-            
+
             // Add weight for congested areas
             const congestion = congestionMap.get(neighborHash) || 0;
             weight += congestion * 0.5;
-            
+
             // Update edge weight
             this.setEdgeAttribute(positionHash, neighborHash, "weight", weight);
         });
-        
+
         // Invalidate affected path cache entries
         this._invalidatePathCacheForPosition(position);
     }
-    
+
     /**
      * Checks if the graph is fully connected
      * @returns True if all nodes are reachable from any node
      */
     public isFullyConnected(): boolean {
         if (this.order === 0) return true;
-        
+
         // Pick any starting node
         const startNode = this.nodes()[0];
-        
+
         // Run BFS to count reachable nodes
         const visited = new Set<string>();
         const queue: string[] = [startNode];
-        
+
         while (queue.length > 0) {
             const current = queue.shift();
-            
+
             if (visited.has(current)) continue;
             visited.add(current);
-            
+
             this.forEachNeighbor(current, (neighbor: string) => {
                 if (!visited.has(neighbor)) {
                     queue.push(neighbor);
                 }
             });
         }
-        
+
         // If all nodes are visited, the graph is connected
         return visited.size === this.order;
     }
@@ -269,11 +269,14 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
                 }
 
                 // Cache the result if no occupied tiles were specified
-                if ((!occupied_tiles || occupied_tiles.length === 0) && this._pathCache.size < this.PATH_CACHE_SIZE_LIMIT) {
+                if (
+                    (!occupied_tiles || occupied_tiles.length === 0) &&
+                    this._pathCache.size < this.PATH_CACHE_SIZE_LIMIT
+                ) {
                     const cacheKey = `${start.hashCode()}-${end.hashCode()}`;
                     this._pathCache.set(cacheKey, path);
                 }
-                
+
                 return path;
             }
 

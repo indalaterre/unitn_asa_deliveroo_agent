@@ -1,4 +1,4 @@
-import { Intention, IntentionTypes } from "@domain/models/intention";
+import { type Intention, IntentionTypes } from "@domain/models/intention";
 
 /**
  * Represents a priority queue for intentions
@@ -51,7 +51,7 @@ export class IntentionQueue {
      * @returns True if the queue contains the intention, false otherwise
      */
     public contains(intention: Intention): boolean {
-        return this._intentions.some(item => item.intention.equals(intention));
+        return this._intentions.some((item) => item.intention.equals(intention));
     }
 
     /**
@@ -61,7 +61,7 @@ export class IntentionQueue {
      */
     public remove(intention: Intention): boolean {
         const initialLength = this._intentions.length;
-        this._intentions = this._intentions.filter(item => !item.intention.equals(intention));
+        this._intentions = this._intentions.filter((item) => !item.intention.equals(intention));
         return initialLength !== this._intentions.length;
     }
 
@@ -72,7 +72,7 @@ export class IntentionQueue {
      * @returns True if the intention was found and updated, false otherwise
      */
     public updatePriority(intention: Intention, newPriority: number): boolean {
-        const index = this._intentions.findIndex(item => item.intention.equals(intention));
+        const index = this._intentions.findIndex((item) => item.intention.equals(intention));
         if (index === -1) {
             return false;
         }
@@ -89,14 +89,14 @@ export class IntentionQueue {
     public isEmpty(): boolean {
         return this._intentions.length === 0;
     }
-    
+
     /**
      * Checks if the queue contains an intention of the specified type
      * @param intentionType The type of intention to check for
      * @returns True if the queue contains an intention of the specified type, false otherwise
      */
     public hasIntentionOfType(intentionType: IntentionTypes): boolean {
-        return this._intentions.some(item => item.intention.type === intentionType);
+        return this._intentions.some((item) => item.intention.type === intentionType);
     }
 
     /**
@@ -112,7 +112,7 @@ export class IntentionQueue {
      * @returns Array of intentions
      */
     public toArray(): Intention[] {
-        return this._intentions.map(item => item.intention);
+        return this._intentions.map((item) => item.intention);
     }
 
     /**
@@ -141,15 +141,15 @@ export class IntentionQueue {
             case IntentionTypes.PICK_UP:
                 return 100; // Highest priority - picking up parcels
             case IntentionTypes.PUT_DOWN:
-                return 90;  // High priority - putting down parcels
+                return 90; // High priority - putting down parcels
             case IntentionTypes.DELIVER:
-                return 80;  // Medium-high priority - delivering parcels
+                return 80; // Medium-high priority - delivering parcels
             case IntentionTypes.MOVE:
-                return 70;  // Medium priority - moving to a specific location
+                return 70; // Medium priority - moving to a specific location
             case IntentionTypes.EXPLORE:
-                return 50;  // Lowest priority - exploring the environment
+                return 50; // Lowest priority - exploring the environment
             default:
-                return 60;  // Default priority
+                return 60; // Default priority
         }
     }
 }

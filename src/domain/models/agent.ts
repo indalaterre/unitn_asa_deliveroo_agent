@@ -31,15 +31,15 @@ export class ObservedAgent extends IdAware {
      * The position of the agent
      */
     public position: Position;
-    
+
     constructor(
         public readonly agentId: string,
-        public score: number = 0,
+        public score = 0,
         public lastSeen: Instant = Instant.now(),
     ) {
         super(agentId);
     }
-    
+
     /**
      * Creates an ObservedAgent from an Agent
      * @param agent The agent to observe
@@ -50,14 +50,14 @@ export class ObservedAgent extends IdAware {
         observedAgent.position = agent.position;
         return observedAgent;
     }
-    
+
     /**
      * Checks if the agent observation has expired
      * @param now The current time
      * @param maxAge The maximum age in milliseconds
      * @returns True if the agent observation has expired
      */
-    isExpired(now: Instant, maxAge: number = 5000): boolean {
+    isExpired(now: Instant, maxAge = 5000): boolean {
         return now.subtract(this.lastSeen).seconds > maxAge;
     }
 

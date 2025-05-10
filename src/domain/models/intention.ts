@@ -132,7 +132,7 @@ export class Intention extends AbstractHashable implements Hashable {
     set context(value: any) {
         this._context = value;
     }
-    
+
     /**
      * Checks if this intention has context information
      * @returns True if the intention has context

@@ -1,20 +1,21 @@
-import { Position } from "@domain/models/environment";
-import { IntentionTypes } from "@domain/models/intention";
+import type { Agent, Parcel } from "@domain/models";
+import type { Position } from "@domain/models/environment";
+import { IdAware } from "@domain/models/id-aware";
+import type { IntentionTypes } from "@domain/models/intention";
 import {
-    Message,
+    type AgentPositionUpdate,
+    type CoordinationMessage,
+    type HandoffConfirmMessage,
+    type HandoffRequestMessage,
+    type HandoffResponseMessage,
+    type HelloMessage,
+    type HelpRequestMessage,
+    type HelpResponseMessage,
+    type IntentionMessage,
+    type Message,
     MessageType,
-    HelloMessage,
-    IntentionMessage,
-    ParcelInfoMessage,
-    HelpRequestMessage,
-    HelpResponseMessage,
-    CoordinationMessage,
-    HandoffRequestMessage,
-    HandoffResponseMessage,
-    HandoffConfirmMessage, AgentPositionUpdate
+    type ParcelInfoMessage,
 } from "./messenger";
-import {Agent, Parcel} from "@domain/models";
-import {IdAware} from "@domain/models/id-aware";
 
 /**
  * Factory class for creating different types of messages
@@ -30,7 +31,7 @@ export class MessageFactory {
         return {
             type,
             senderId,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         };
     }
 
@@ -44,14 +45,14 @@ export class MessageFactory {
     public static createHelloMessage(
         senderId: string,
         position: Position,
-        score: number
+        score: number,
     ): HelloMessage {
         return {
             ...this.createBaseMessage(MessageType.HELLO, senderId),
             type: MessageType.HELLO,
             senderId,
             position,
-            score
+            score,
         };
     }
 
@@ -69,7 +70,7 @@ export class MessageFactory {
         intentionType: IntentionTypes,
         targetPosition: Position,
         currentPosition: Position,
-        priority?: number
+        priority?: number,
     ): IntentionMessage {
         return {
             ...this.createBaseMessage(MessageType.INTENTION, senderId),
@@ -77,7 +78,7 @@ export class MessageFactory {
             intentionType,
             targetPosition,
             currentPosition,
-            priority
+            priority,
         };
     }
 
@@ -87,20 +88,21 @@ export class MessageFactory {
      * @param agents Array of agents information to share
      * @returns ParcelInfoMessage object
      */
-    public static createAgentsUpdateMessage(senderId: string, agents: Agent[]): AgentPositionUpdate {
-        const messageAgents =
-            agents
-                .map((agent: Agent) => {
-                    return {
-                        agentId: agent.agentId,
-                        position: agent.position,
-                        score: agent.score
-                    }
-                })
+    public static createAgentsUpdateMessage(
+        senderId: string,
+        agents: Agent[],
+    ): AgentPositionUpdate {
+        const messageAgents = agents.map((agent: Agent) => {
+            return {
+                agentId: agent.agentId,
+                position: agent.position,
+                score: agent.score,
+            };
+        });
         return {
             ...this.createBaseMessage(MessageType.AGENT_UPDATE, senderId),
             agents: messageAgents,
-            type: MessageType.AGENT_UPDATE
+            type: MessageType.AGENT_UPDATE,
         };
     }
 
@@ -110,25 +112,20 @@ export class MessageFactory {
      * @param parcels Array of parcel information to share
      * @returns ParcelInfoMessage object
      */
-    public static createParcelInfoMessage(
-        senderId: string,
-        parcels: Parcel[]
-    ): ParcelInfoMessage {
-        const messageParcels =
-            parcels
-                .map((parcel: Parcel) => {
-                    return {
-                        id: parcel.id,
-                        position: parcel.position,
-                        score: parcel.score.currentValue,
-                        agentId: parcel.agentId.toString(),
-                    }
-                });
+    public static createParcelInfoMessage(senderId: string, parcels: Parcel[]): ParcelInfoMessage {
+        const messageParcels = parcels.map((parcel: Parcel) => {
+            return {
+                id: parcel.id,
+                position: parcel.position,
+                score: parcel.score.currentValue,
+                agentId: parcel.agentId?.toString(),
+            };
+        });
 
         return {
             ...this.createBaseMessage(MessageType.PARCEL_INFO, senderId),
             type: MessageType.PARCEL_INFO,
-            parcels: messageParcels
+            parcels: messageParcels,
         };
     }
 
@@ -148,7 +145,7 @@ export class MessageFactory {
         position: Position,
         urgency: number,
         expiresAt: number,
-        parcelIds?: string[]
+        parcelIds?: string[],
     ): HelpRequestMessage {
         const requestId = `help-${senderId}-${Date.now()}`;
         return {
@@ -159,7 +156,7 @@ export class MessageFactory {
             position,
             urgency,
             expiresAt,
-            parcelIds
+            parcelIds,
         };
     }
 
@@ -175,14 +172,14 @@ export class MessageFactory {
         senderId: string,
         requestId: string,
         accepted: boolean,
-        estimatedTimeToArrive?: number
+        estimatedTimeToArrive?: number,
     ): HelpResponseMessage {
         return {
             ...this.createBaseMessage(MessageType.HELP_RESPONSE, senderId),
             type: MessageType.HELP_RESPONSE,
             requestId,
             accepted,
-            estimatedTimeToArrive
+            estimatedTimeToArrive,
         };
     }
 
@@ -198,14 +195,14 @@ export class MessageFactory {
         senderId: string,
         action: "split_parcels" | "clear_area" | "joint_delivery" | "territory_claim",
         position: Position,
-        details: any
+        details: any,
     ): CoordinationMessage {
         return {
             ...this.createBaseMessage(MessageType.COORDINATION, senderId),
             type: MessageType.COORDINATION,
             action,
             position,
-            details
+            details,
         };
     }
 
@@ -225,7 +222,7 @@ export class MessageFactory {
         meetingPosition: Position,
         urgency: number,
         timeToMeet: number,
-        expiresAt: number
+        expiresAt: number,
     ): HandoffRequestMessage {
         const requestId = `handoff-${senderId}-${Date.now()}`;
         return {
@@ -236,7 +233,7 @@ export class MessageFactory {
             meetingPosition,
             urgency,
             timeToMeet,
-            expiresAt
+            expiresAt,
         };
     }
 
@@ -256,7 +253,7 @@ export class MessageFactory {
         accepted: boolean,
         parcelIds: string[],
         meetingPosition: Position,
-        estimatedArrivalTime: number
+        estimatedArrivalTime: number,
     ): HandoffResponseMessage {
         return {
             ...this.createBaseMessage(MessageType.HANDOFF_RESPONSE, senderId),
@@ -265,7 +262,7 @@ export class MessageFactory {
             accepted,
             parcelIds,
             meetingPosition,
-            estimatedArrivalTime
+            estimatedArrivalTime,
         };
     }
 
@@ -283,7 +280,7 @@ export class MessageFactory {
         requestId: string,
         parcelIds: string[],
         success: boolean,
-        position: Position
+        position: Position,
     ): HandoffConfirmMessage {
         return {
             ...this.createBaseMessage(MessageType.HANDOFF_CONFIRM, senderId),
@@ -291,7 +288,7 @@ export class MessageFactory {
             requestId,
             parcelIds,
             success,
-            position
+            position,
         };
     }
 }

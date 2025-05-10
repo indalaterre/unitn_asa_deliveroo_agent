@@ -20,6 +20,12 @@ export class BeliefContainer {
     private readonly _ownId: string;
 
     /**
+     * Set of trusted agent IDs
+     * @private
+     */
+    private _trustedAgentIds: Set<string> = new Set();
+
+    /**
      * The position of the agent owning these beliefs
      * @private
      */
@@ -63,7 +69,7 @@ export class BeliefContainer {
      * @private
      */
     private _agentsDensityOnTile: HashMap<Position, number> = new HashMap();
-    
+
     /**
      * Manages delivery point congestion
      * @private
@@ -134,11 +140,11 @@ export class BeliefContainer {
             this.visitedTiles.set(position, 0);
             this._agentsDensityOnTile.set(position, 0);
         }
-        
+
         // Initialize delivery point manager with all delivery tiles
         this._deliveryPointManager = new DeliveryPointManager(
-            this.map.getDeliveryTiles().map(tile => tile.position),
-            this.map
+            this.map.getDeliveryTiles().map((tile) => tile.position),
+            this.map,
         );
     }
 
@@ -155,7 +161,7 @@ export class BeliefContainer {
     get carryingParcelIds(): string[] {
         return this._carriedParcels.map((parcel: Parcel) => parcel.id);
     }
-    
+
     /**
      * @returns the parcels being carried by the agent
      */
@@ -262,7 +268,7 @@ export class BeliefContainer {
 
     findBestDelivery(requestPosition: Position = this._ownPosition): PositionWithDistance {
         const blockedDeliveries: HashSet<Position> = this._temporaryBlockedDeliveries.keySet();
-        
+
         // Update all delivery point statuses to account for time decay
         this._deliveryPointManager.updateAllStatuses();
 
@@ -273,29 +279,35 @@ export class BeliefContainer {
             .map((tilePosition: Position) => {
                 const distance = this.map.distanceIfPossible(requestPosition, tilePosition);
                 if (distance === null) return null;
-                
+
                 // Calculate competitive score using the delivery point manager
                 // This now considers opponent positions and tactical advantage
-                const competitiveScore = this._deliveryPointManager.calculateCongestionScore(tilePosition, distance);
-                
+                const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
+                    tilePosition,
+                    distance,
+                );
+
                 // Get additional agent density from surrounding area
                 const agentsDensity = this._agentsDensityOnTile.get(tilePosition) ?? 0;
-                
+
                 // Get tactical advantage score (higher is better)
-                const tacticalAdvantage = this._deliveryPointManager.getTacticalAdvantageScore(tilePosition);
-                
+                const tacticalAdvantage =
+                    this._deliveryPointManager.getTacticalAdvantageScore(tilePosition);
+
                 // Calculate final weighted score (lower is better)
                 // We reduce the score based on tactical advantage (making it more attractive)
-                const weightedScore = competitiveScore + (agentsDensity * 0.3);
+                const weightedScore = competitiveScore + agentsDensity * 0.3;
 
                 return {
                     distance,
                     position: tilePosition,
-                    context: { 
+                    context: {
                         weightedDistance: weightedScore,
-                        opponentCongestion: this._deliveryPointManager.getOpponentCongestionLevel(tilePosition),
-                        estimatedWaitTime: this._deliveryPointManager.getEstimatedWaitTime(tilePosition),
-                        tacticalAdvantage: tacticalAdvantage
+                        opponentCongestion:
+                            this._deliveryPointManager.getOpponentCongestionLevel(tilePosition),
+                        estimatedWaitTime:
+                            this._deliveryPointManager.getEstimatedWaitTime(tilePosition),
+                        tacticalAdvantage: tacticalAdvantage,
                     },
                 } as PositionWithDistance;
             })
@@ -309,9 +321,11 @@ export class BeliefContainer {
         // Find the first delivery point that has a valid path
         let chosenBestDelivery: PositionWithDistance = null;
         for (const delivery of bestDeliverySites) {
-            if (!!this.map.calculatePath(requestPosition, delivery.position, blockedDeliveries?.all)) {
+            if (
+                !!this.map.calculatePath(requestPosition, delivery.position, blockedDeliveries?.all)
+            ) {
                 chosenBestDelivery = delivery;
-                
+
                 // Register the intention to use this delivery point to update congestion tracking
                 this._deliveryPointManager.registerDeliveryIntent(delivery.position);
                 break;
@@ -389,84 +403,85 @@ export class BeliefContainer {
     findBestExplorationSite(): Position {
         // Only consider spawn tiles as potential exploration targets
         const spawnTiles = this.map.getSpawnTiles();
-        
+
         // Get the agent's visibility distance from game configuration
         const visibilityDistance = GameConfiguration.agentVisibilityDistance;
-        
+
         // Filter spawn tiles to only include those outside the visibility area
-        const tilesOutsideVisibility = spawnTiles.filter(tile => {
+        const tilesOutsideVisibility = spawnTiles.filter((tile) => {
             const distanceToTile = this._ownPosition.manhattanDistance(tile.position);
             return distanceToTile > visibilityDistance; // Only consider tiles outside visibility range
         });
-        
+
         // First try to find unexplored spawn tiles outside visibility
         const unexploredTiles = tilesOutsideVisibility
-            .filter(tile => !this.visitedTiles.has(tile.position))
-            .filter(tile => !this._temporaryBlockedExplore.has(tile.position));
-        
+            .filter((tile) => !this.visitedTiles.has(tile.position))
+            .filter((tile) => !this._temporaryBlockedExplore.has(tile.position));
+
         // If we have unexplored tiles outside visibility, prioritize those
         if (unexploredTiles.length > 0) {
             return unexploredTiles
-                .map(tile => {
+                .map((tile) => {
                     const distance = this._ownPosition.manhattanDistance(tile.position);
                     return {
                         position: tile.position,
-                        distance: distance  // Lower distance is better for unexplored tiles
+                        distance: distance, // Lower distance is better for unexplored tiles
                     } as PositionWithDistance;
                 })
                 .sort((d1, d2) => d1.distance - d2.distance) // Sort by closest first
-                .map(pos => pos.position)
+                .map((pos) => pos.position)
                 .shift();
         }
-        
+
         // If no unexplored tiles outside visibility, try any spawn tile outside visibility
         if (tilesOutsideVisibility.length > 0) {
             const exploredPositions = tilesOutsideVisibility
-                .filter(tile => !this._temporaryBlockedExplore.has(tile.position))
-                .map(tile => {
+                .filter((tile) => !this._temporaryBlockedExplore.has(tile.position))
+                .map((tile) => {
                     const position = tile.position;
                     const visits = this.visitedTiles.get(position) || 0;
                     const distance = this._ownPosition.manhattanDistance(position);
                     const agentsDensityMalus = this._agentsDensityOnTile.get(position) || 0;
-                    
+
                     // Add some randomness to prevent getting stuck
                     const randomFactor = Math.random() * 1.0;
-                    
+
                     return {
                         position,
                         // Higher score is better: prefer less visited tiles that are closer
-                        score: (1 / (visits + 1)) - (distance * 0.05) - agentsDensityMalus + randomFactor
+                        score:
+                            1 / (visits + 1) - distance * 0.05 - agentsDensityMalus + randomFactor,
                     };
                 })
                 .sort((a, b) => b.score - a.score); // Higher score is better
-            
+
             if (exploredPositions.length > 0) {
                 return exploredPositions[0].position;
             }
         }
-        
+
         // Fallback: If no tiles outside visibility or all are blocked, consider any spawn tile
         const anySpawnTiles = spawnTiles
-            .filter(tile => !this._temporaryBlockedExplore.has(tile.position))
-            .map(tile => {
+            .filter((tile) => !this._temporaryBlockedExplore.has(tile.position))
+            .map((tile) => {
                 const position = tile.position;
                 const visits = this.visitedTiles.get(position) || 0;
                 const distance = this._ownPosition.manhattanDistance(position);
-                
+
                 return {
                     position,
                     // Prioritize less visited tiles
-                    score: (1 / (visits + 1)) + Math.random()
+                    score: 1 / (visits + 1) + Math.random(),
                 };
             })
             .sort((a, b) => b.score - a.score); // Higher score is better
-        
+
         if (anySpawnTiles.length > 0) {
             return anySpawnTiles[0].position;
         }
-        
+
         // Last resort fallback: return a random spawn position
-        const spawnPositions = spawnTiles.map(tile => tile.position);
+        const spawnPositions = spawnTiles.map((tile) => tile.position);
         return spawnPositions[Math.floor(Math.random() * spawnPositions.length)];
     }
 
@@ -491,7 +506,7 @@ export class BeliefContainer {
             this._temporaryBlockedExplore.set(intention.position, new DecayingValue(10));
         }
     }
-    
+
     /**
      * Unregisters the agent from a delivery point to reduce congestion tracking
      * @param position The delivery point position
@@ -502,7 +517,7 @@ export class BeliefContainer {
             this._deliveryPointManager.unregisterDeliveryIntent(position);
         }
     }
-    
+
     /**
      * Checks if a position is occupied by another agent
      * @param position The position to check
@@ -511,7 +526,7 @@ export class BeliefContainer {
     isPositionOccupied(position: Position): boolean {
         return this.agentsByPosition.has(position);
     }
-    
+
     /**
      * Gets all positions currently occupied by other agents
      * @returns Array of positions occupied by other agents
@@ -519,7 +534,7 @@ export class BeliefContainer {
     getOccupiedPositions(): Position[] {
         return this.agentsByPosition.keySet().all;
     }
-    
+
     /**
      * Checks if the agent is currently on a delivery tile
      * @returns True if the agent is on a delivery tile
@@ -527,7 +542,7 @@ export class BeliefContainer {
     isAgentOnDeliveryTile(): boolean {
         return this.map.isDeliveryPosition(this._ownPosition);
     }
-    
+
     /**
      * Checks if the agent is currently on a tile with a free parcel
      * @returns True if the agent is on a tile with a free parcel
@@ -537,18 +552,18 @@ export class BeliefContainer {
         if (!parcelsInPosition?.count) {
             return false;
         }
-        
+
         const carriedParcelIds = new Set<string>(this.carryingParcelIds);
-        
+
         for (const parcel of parcelsInPosition.all) {
             if (!carriedParcelIds.has(parcel.id)) {
                 return true;
             }
         }
-        
+
         return false;
     }
-    
+
     /**
      * Checks if a position has parcels that can be picked up
      * @param position The position to check
@@ -559,19 +574,19 @@ export class BeliefContainer {
         if (!parcelsInPosition?.count) {
             return false;
         }
-        
+
         const carriedParcelIds = new Set<string>(this.carryingParcelIds);
-        
+
         // Check if there are any parcels at this position that we're not already carrying
         for (const parcel of parcelsInPosition.all) {
             if (!carriedParcelIds.has(parcel.id)) {
                 return true;
             }
         }
-        
+
         return false;
     }
-    
+
     /**
      * Calculates a congestion score for a delivery point
      * @param position The delivery point position
@@ -765,28 +780,32 @@ export class BeliefContainer {
 
         // Updating the agents density
         this._agentsDensityOnTile.clear();
-        
+
         // Collect opponent positions for delivery point congestion tracking
         const opponentPositions: Position[] = [];
-        
+
         // Clear existing position mappings to prevent stale data
         this.agentsByPosition.clear();
-        
+
         // Process existing agents (opponents)
         for (const agent of this.agents.values()) {
             // Skip our own agent
             if (agent.agentId === this._ownId) continue;
-            
+
             // Add opponent position to the list for delivery point congestion calculation
-            if (agent.position) {
+            // Only consider non-trusted agents as opponents for congestion
+            if (agent.position && !this._trustedAgentIds.has(agent.agentId)) {
                 opponentPositions.push(agent.position);
-                
-                // Update position mappings
+            }
+
+            // Update position mappings
+            if (agent.position) {
                 this.agentsByPosition.set(agent.position, agent);
                 this.positionByAgent.set(agent, agent.position);
             }
-            
+
             // Update agent density for all positions in radius
+            // We still track density for all agents, including trusted ones
             const tilesInRadius: Position[] = this.map.getTilesInDensityRadius(agent.position);
             for (const position of tilesInRadius) {
                 this._agentsDensityOnTile.update(position, (count: number) => (count ?? 0) + 1);
@@ -802,11 +821,11 @@ export class BeliefContainer {
                 if (existingAgent.position && !existingAgent.position.equals(agent.position)) {
                     // Remove old position mapping
                     this.agentsByPosition.delete(existingAgent.position);
-                    
+
                     // Update position
                     existingAgent.position = agent.position;
                     existingAgent.lastSeen = Instant.now();
-                    
+
                     // Update position mappings
                     this.agentsByPosition.set(agent.position, agent);
                     this.positionByAgent.set(agent, agent.position);
@@ -815,23 +834,23 @@ export class BeliefContainer {
                 // Create new observed agent
                 const observedAgent = ObservedAgent.fromAgent(agent);
                 this.agents.set(agent.agentId, observedAgent);
-                
+
                 // Update position mappings
                 if (agent.position) {
                     this.agentsByPosition.set(agent.position, agent);
                     this.positionByAgent.set(agent, agent.position);
                 }
             }
-            
+
             // Add to opponent positions if it's not our agent
             if (agent.agentId !== this._ownId && agent.position) {
                 opponentPositions.push(agent.position);
             }
         }
-        
+
         // Make sure our own position is not marked as occupied
         this.agentsByPosition.delete(this._ownPosition);
-        
+
         // Update delivery point manager with current opponent positions and our position
         this._deliveryPointManager.updateOpponentPositions(opponentPositions, this._ownPosition);
 
@@ -843,5 +862,24 @@ export class BeliefContainer {
      */
     getAgents(): Agent[] {
         return Array.from(this.agentsByPosition.values());
+    }
+
+    /**
+     * Adds an agent to the trusted agents list
+     * @param agentId The ID of the agent to trust
+     */
+    addTrustedAgent(agentId: string): void {
+        if (agentId && agentId !== this._ownId) {
+            this._trustedAgentIds.add(agentId);
+        }
+    }
+
+    /**
+     * Checks if an agent is trusted
+     * @param agentId The ID of the agent to check
+     * @returns True if the agent is trusted
+     */
+    isTrustedAgent(agentId: string): boolean {
+        return this._trustedAgentIds.has(agentId);
     }
 }

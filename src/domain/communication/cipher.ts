@@ -1,8 +1,8 @@
-import { privateDecrypt, publicEncrypt } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {constants, privateDecrypt, publicEncrypt} from "node:crypto";
 
-import type { CryptoConfiguration } from "@domain/models/configurations";
+import type {CryptoConfiguration} from "@domain/models/configurations";
 
 export class Cipher {
     /**
@@ -18,16 +18,31 @@ export class Cipher {
     constructor(config: CryptoConfiguration) {
         this.publicKey = fs.readFileSync(path.resolve(config.publicPath), "utf8");
         this.privateKey = fs.readFileSync(path.resolve(config.privatePath), "utf8");
+        console.log("Cipher initialized with keys");
     }
 
     encrypt(message: string): string {
-        const buffer = Buffer.from(message, "utf8");
-        return publicEncrypt(this.publicKey, buffer).toString("base64");
+        try {
+            const buffer = Buffer.from(message, "utf8");
+            return publicEncrypt({
+                key: this.publicKey,
+                padding: constants.RSA_PKCS1_OAEP_PADDING
+            }, buffer).toString("base64");
+        } catch (error) {
+            return null;
+        }
     }
 
     decrypt(encryptedMessage: string): string {
-        const buffer = Buffer.from(encryptedMessage, "utf8");
-        return privateDecrypt(this.privateKey, buffer).toString("utf8");
+        try {
+            const buffer = Buffer.from(encryptedMessage, "base64");
+            return privateDecrypt({
+                key: this.privateKey,
+                padding: constants.RSA_PKCS1_OAEP_PADDING
+            }, buffer).toString("utf8");
+        } catch (error) {
+            return null;
+        }
     }
 
     encryptObject(obj: any): string {
@@ -35,7 +50,7 @@ export class Cipher {
     }
 
     decryptObject<T>(encryptedMessage: string): T {
-        const decrypted = this.decrypt(encryptedMessage);
+        const decrypted: string = this.decrypt(encryptedMessage);
         return JSON.parse(decrypted) as T;
     }
 }

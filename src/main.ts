@@ -4,6 +4,7 @@ import * as dotenv from "dotenv";
 
 import type { Actuator } from "@domain/communication";
 import { SocketClient } from "@domain/communication/client";
+import type { Messenger } from "@domain/communication/messenger";
 import type { Sensor } from "@domain/communication/sensor";
 import { MatchMap } from "@domain/map";
 import {
@@ -13,7 +14,6 @@ import {
     type PddlConfiguration,
 } from "@domain/models/configurations";
 import { Player } from "@domain/player";
-import {Messenger} from "@domain/communication/messenger";
 
 function getConfiguration(): AgentConfiguration {
     const options = [
@@ -97,7 +97,11 @@ async function main(): Promise<void> {
     console.log("Starting agent with config");
     console.log(JSON.stringify(gameConfiguration, null, 2));
 
-    const client = new SocketClient(gameConfiguration.host, gameConfiguration.token);
+    const client =
+        new SocketClient(
+            gameConfiguration.host,
+            gameConfiguration.token,
+            gameConfiguration.cryptoKeyPaths);
 
     const [playerInfo, freeTiles, envConfig, initialParcels] = await Promise.all([
         client.getPlayerInfo(),
