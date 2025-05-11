@@ -1,5 +1,4 @@
 import type { MatchMap } from "@domain/map";
-import type { Agent } from "@domain/models/agent";
 import { Position } from "@domain/models/environment";
 import { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
@@ -170,7 +169,7 @@ export class DeliveryPointManager {
      * @returns A weighted score (lower is better)
      */
     public calculateCongestionScore(position: Position, distance: number): number {
-        const status = this._getOrCreateStatus(position);
+        const status: DeliveryPointStatus = this._getOrCreateStatus(position);
         this._updateStatus(position, status);
 
         const directOpponents = status.opponentCount;
@@ -197,7 +196,7 @@ export class DeliveryPointManager {
         }
 
         // Surrounding opponents matter less but still important
-        score += surroundingOpponents * 1.0;
+        score += surroundingOpponents;
 
         // Tactical advantage reduces the score (makes the point more attractive)
         score -= tacticalAdvantage * 0.5;

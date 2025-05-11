@@ -3,17 +3,17 @@ import commandLineArgs, { type CommandLineOptions } from "command-line-args";
 import * as dotenv from "dotenv";
 
 import type { Actuator } from "@domain/communication";
-import { SocketClient } from "@domain/communication/client";
-import type { Messenger } from "@domain/communication/messenger";
-import type { Sensor } from "@domain/communication/sensor";
-import { MatchMap } from "@domain/map";
+import { SocketClient } from "./domain/communication/client";
+import type { Messenger } from "./domain/communication/messenger";
+import type { Sensor } from "./domain/communication/sensor";
+import { MatchMap } from "./domain/map";
 import {
     type AgentConfiguration,
     type CryptoConfiguration,
     GameConfiguration,
     type PddlConfiguration,
-} from "@domain/models/configurations";
-import { Player } from "@domain/player";
+} from "@domain/models";
+import { PlayerBDI } from "./domain/player-bdi";
 
 function getConfiguration(): AgentConfiguration {
     const options = [
@@ -94,14 +94,14 @@ function getConfiguration(): AgentConfiguration {
 
 async function main(): Promise<void> {
     const gameConfiguration: AgentConfiguration = getConfiguration();
-    console.log("Starting agent with config");
+    console.log("Starting agent with BDI architecture");
     console.log(JSON.stringify(gameConfiguration, null, 2));
 
-    const client =
-        new SocketClient(
-            gameConfiguration.host,
-            gameConfiguration.token,
-            gameConfiguration.cryptoKeyPaths);
+    const client = new SocketClient(
+        gameConfiguration.host,
+        gameConfiguration.token,
+        gameConfiguration.cryptoKeyPaths,
+    );
 
     const [playerInfo, freeTiles, envConfig, initialParcels] = await Promise.all([
         client.getPlayerInfo(),
@@ -114,7 +114,8 @@ async function main(): Promise<void> {
 
     const mathMap: MatchMap = await MatchMap.build(freeTiles, playerInfo.position);
 
-    const player = new Player(
+    // Create a player using the BDI architecture
+    const player = new PlayerBDI(
         mathMap,
         initialParcels,
         client as Sensor,

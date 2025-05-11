@@ -53,12 +53,19 @@ export class ObservedAgent extends IdAware {
 
     /**
      * Checks if the agent observation has expired
-     * @param now The current time
      * @param maxAge The maximum age in milliseconds
      * @returns True if the agent observation has expired
      */
-    isExpired(now: Instant, maxAge = 5000): boolean {
-        return now.subtract(this.lastSeen).seconds > maxAge;
+    isExpired(maxAge = 5000): boolean {
+        return Instant.now().subtract(this.lastSeen).seconds > maxAge;
+    }
+
+    isFriendExpired(): boolean {
+        return this.isExpired(10000);
+    }
+
+    toAgent(): Agent {
+        return new Agent(this.agentId, this.position, this.score);
     }
 
     /**

@@ -152,4 +152,10 @@ export class IntentionQueue {
                 return 60; // Default priority
         }
     }
+
+    toString(): string {
+        return this.toArray()
+            .map((intention: Intention) => intention?.toString())
+            .join("; ");
+    }
 }

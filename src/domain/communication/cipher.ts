@@ -1,8 +1,8 @@
+import { constants, privateDecrypt, publicEncrypt } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {constants, privateDecrypt, publicEncrypt} from "node:crypto";
 
-import type {CryptoConfiguration} from "@domain/models/configurations";
+import type { CryptoConfiguration } from "@domain/models/configurations";
 
 export class Cipher {
     /**
@@ -24,10 +24,13 @@ export class Cipher {
     encrypt(message: string): string {
         try {
             const buffer = Buffer.from(message, "utf8");
-            return publicEncrypt({
-                key: this.publicKey,
-                padding: constants.RSA_PKCS1_OAEP_PADDING
-            }, buffer).toString("base64");
+            return publicEncrypt(
+                {
+                    key: this.publicKey,
+                    padding: constants.RSA_PKCS1_OAEP_PADDING,
+                },
+                buffer,
+            ).toString("base64");
         } catch (error) {
             return null;
         }
@@ -36,10 +39,13 @@ export class Cipher {
     decrypt(encryptedMessage: string): string {
         try {
             const buffer = Buffer.from(encryptedMessage, "base64");
-            return privateDecrypt({
-                key: this.privateKey,
-                padding: constants.RSA_PKCS1_OAEP_PADDING
-            }, buffer).toString("utf8");
+            return privateDecrypt(
+                {
+                    key: this.privateKey,
+                    padding: constants.RSA_PKCS1_OAEP_PADDING,
+                },
+                buffer,
+            ).toString("utf8");
         } catch (error) {
             return null;
         }

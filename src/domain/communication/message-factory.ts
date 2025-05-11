@@ -25,12 +25,18 @@ export class MessageFactory {
      * Create a base message with common fields
      * @param type Message type
      * @param senderId ID of the sending agent
+     * @param recipientId Optional ID of the recipient agent
      * @returns Base message object
      */
-    private static createBaseMessage(type: MessageType, senderId: string): Message {
+    private static createBaseMessage(
+        type: MessageType,
+        senderId: string,
+        recipientId?: string,
+    ): Message {
         return {
             type,
             senderId,
+            recipientId,
             timestamp: Date.now(),
         };
     }
@@ -40,15 +46,17 @@ export class MessageFactory {
      * @param senderId ID of the sending agent
      * @param position Current position of the agent
      * @param score Current score of the agent
+     * @param recipientId Optional ID of the recipient agent
      * @returns HelloMessage object
      */
     public static createHelloMessage(
         senderId: string,
         position: Position,
         score: number,
+        recipientId?: string,
     ): HelloMessage {
         return {
-            ...this.createBaseMessage(MessageType.HELLO, senderId),
+            ...this.createBaseMessage(MessageType.HELLO, senderId, recipientId),
             type: MessageType.HELLO,
             senderId,
             position,

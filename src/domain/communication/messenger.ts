@@ -155,6 +155,12 @@ export interface Messenger {
     shoutHelloMessage(message: HelloMessage): Promise<void>;
 
     /**
+     * Replies to a hello message sending its own position
+     * @param message
+     */
+    replyHelloMessage(message: HelloMessage): Promise<void>;
+
+    /**
      * Register a callback for receiving hello messages
      * @param callback Function to call when a hello message is received
      */

@@ -2,7 +2,7 @@
 import { build } from "esbuild";
 
 build({
-    entryPoints: ["src/main.ts", "src/utils/matrix.ts"],
+    entryPoints: ["src/main-bdi.ts", "src/utils/matrix.ts"],
     outdir: 'dist',
     bundle: true,
     platform: "node",

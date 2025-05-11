@@ -256,6 +256,18 @@ export class MatchMap {
         return this._pathsCache.get(cacheKey);
     }
 
+    calculateMidPointPaths(from: Position, to: Position): Position[][] {
+        const path: Position[] = this.calculatePath(from, to);
+        if (!path) {
+            return null;
+        }
+
+        const firstHalf: Position[] = path.slice(0, Math.floor(path.length / 2));
+        const secondHalf: Position[] = path.slice(Math.floor(path.length / 2));
+
+        return [firstHalf, secondHalf];
+    }
+
     private _calculateDistanceFromReachable(a: Position, b: Position): number {
         return this._graph.getDistance(a.hashCode(), b.hashCode());
     }

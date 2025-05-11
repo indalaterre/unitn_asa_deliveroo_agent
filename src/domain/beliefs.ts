@@ -169,6 +169,10 @@ export class BeliefContainer {
         return [...this._carriedParcels];
     }
 
+    get myId(): string {
+        return this._ownId;
+    }
+
     /**
      * The position of the agent
      */
@@ -249,13 +253,7 @@ export class BeliefContainer {
             (a, b) => a.context.weightedScore === b.context.weightedScore,
         );
 
-        const candidatePosition: PositionWithDistance = filteredCandidates.shift();
-
-        filteredCandidates.forEach((ignoredCandidate: PositionWithDistance) => {
-            this._notWorthParcels.add(ignoredCandidate.context.parcel);
-        });
-
-        return candidatePosition;
+        return filteredCandidates?.shift();
     }
 
     updateDroppedParcels(parcelIds: Set<string>): void {
@@ -345,14 +343,13 @@ export class BeliefContainer {
                     !carryingParcelIds.has(parcel.id) && !this._notWorthParcels.has(parcel),
             )
             .map((parcel: Parcel) => {
-                const toParcelPath: Position[] = this.map.calculatePath(
-                    this.myPosition,
-                    parcel.position,
-                );
+                const toParcelPath: Position[] = this.map
+                    .calculatePath(this.myPosition, parcel.position)
+                    ?.slice(1);
 
                 if (toParcelPath) {
                     return {
-                        context: parcel,
+                        context: { parcel },
                         position: parcel.position,
                         distance: toParcelPath.length,
                     } as PositionWithDistance;
@@ -364,7 +361,7 @@ export class BeliefContainer {
             .sort((d1: PositionWithDistance, d2: PositionWithDistance) => d1.distance - d2.distance)
             .shift();
 
-        const freeParcel: Parcel = candidatePosition?.context;
+        const freeParcel: Parcel = candidatePosition?.context?.parcel;
         if (!freeParcel) {
             return null;
         }
@@ -388,10 +385,16 @@ export class BeliefContainer {
              * newParcelScore >= -(moveCost * distance) + (moveCost * newDistance)
              * newParcelScore >= moveCost * (newDistance - distance)
              */
-            const worthDetour: boolean =
-                freeParcel.currentScore >= moveScoreCost * (newParcelCost - distanceFromDelivery);
-            if (worthDetour) {
-                chosenPosition = candidatePosition;
+            const netBenefit: number =
+                freeParcel.currentScore - moveScoreCost * (newParcelCost - distanceFromDelivery);
+            if (netBenefit > 5) {
+                chosenPosition = {
+                    ...candidatePosition,
+                    context: {
+                        ...candidatePosition.context,
+                        netBenefit,
+                    },
+                };
             } else {
                 this._notWorthParcels.add(freeParcel);
             }
@@ -565,29 +568,6 @@ export class BeliefContainer {
     }
 
     /**
-     * Checks if a position has parcels that can be picked up
-     * @param position The position to check
-     * @returns True if the position has parcels
-     */
-    isPositionWithParcels(position: Position): boolean {
-        const parcelsInPosition: HashSet<Parcel> = this.parcelsByPosition.get(position);
-        if (!parcelsInPosition?.count) {
-            return false;
-        }
-
-        const carriedParcelIds = new Set<string>(this.carryingParcelIds);
-
-        // Check if there are any parcels at this position that we're not already carrying
-        for (const parcel of parcelsInPosition.all) {
-            if (!carriedParcelIds.has(parcel.id)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Calculates a congestion score for a delivery point
      * @param position The delivery point position
      * @param distance The distance to the delivery point
@@ -699,6 +679,10 @@ export class BeliefContainer {
         return this.map.calculatePath(this._ownPosition, to, positionsToAvoid);
     }
 
+    calculateMeetingPointPaths(to: Position): Position[][] {
+        return this.map.calculateMidPointPaths(this.myPosition, to);
+    }
+
     private updateClosestDistanceFromDelivery(parcelId: string, parcelPosition: Position) {
         const distanceFromClosestDelivery: PositionWithDistance =
             this.findBestDelivery(parcelPosition);
@@ -760,6 +744,79 @@ export class BeliefContainer {
         }
     }
 
+    /**
+     * Evaluates the benefit of handing off parcels to another agent
+     * @param agentId The ID of the potential handoff partner
+     * @returns A numeric value representing the benefit (higher is better)
+     */
+    evaluateHandoffBenefit(agentId: string): number {
+        // If not carrying parcels, no benefit
+        if (!this.isCarrying) {
+            return -1;
+        }
+
+        const friendAgent: Agent = this.agents.get(agentId);
+        const agentPosition: Position = friendAgent?.position;
+        if (!agentPosition) {
+            return -1;
+        }
+
+        // Find the best delivery point for our parcels
+        const bestDelivery: PositionWithDistance = this.findBestDelivery();
+        const myPathToAgent: Position[][] = this.map.calculateMidPointPaths(
+            this.myPosition,
+            agentPosition,
+        );
+        if (!myPathToAgent) {
+            //Path to agent is blocked. We need to skip it
+            return -1;
+        }
+
+        //SPECIAL CASE: Path from my position to best delivery is blocked. We evaluate asking help to a friend
+        if (!bestDelivery?.position) {
+            const pathLength: number = myPathToAgent[0].length + myPathToAgent[1].length;
+            if (!pathLength) {
+                return -1;
+            } else if (pathLength > 20) {
+                return 50;
+            } else {
+                return 200;
+            }
+        }
+
+        const myPathToDelivery: Position[][] = this.map.calculateMidPointPaths(
+            this.myPosition,
+            bestDelivery.position,
+        );
+
+        //We consider as meeting position the final destination of the agent path to at the middle of the path
+        const myDistanceToMeeting: number = myPathToDelivery[0].length;
+        const friendDistanceToMeeting: number = myDistanceToMeeting[1].length;
+
+        //We now calculate the benefit of a handoff operation
+        /*
+        YOU -------- myDistanceToDelivery --------> DELIVERY POINT
+          \                                         /
+           \-- myDistanceToMeeting --> MEETING    /
+                                       POINT <----/
+                                              friendMeetingToDelivery
+                                                  /
+                                                 /
+                                             PARTNER
+
+         */
+        const timeSavings: number =
+            myDistanceToMeeting - (myDistanceToMeeting + friendDistanceToMeeting);
+
+        const totalParcelValue: number = this.carriedParcels.reduce(
+            (sum: number, parcel: Parcel) => sum + parcel.currentScore,
+            0,
+        );
+
+        // We increase the priority of the handoff if parcels are closer to expiration (their score is low)
+        return timeSavings - Math.floor(totalParcelValue / 10);
+    }
+
     //////// AGENT
 
     queueAgentsSynchronization(agents: Agent[]): void {
@@ -767,11 +824,9 @@ export class BeliefContainer {
     }
 
     synchronizeKnownAgents(): void {
-        const now: Instant = Instant.now();
-
         // Cleaning up expired agents
         for (const [id, agent] of this.agents.entries()) {
-            if (agent.isExpired(now)) {
+            if (agent.isExpired()) {
                 this.agents.delete(id);
                 this.agentsByPosition.delete(agent.position);
                 this.positionByAgent.delete(agent);
@@ -857,11 +912,18 @@ export class BeliefContainer {
         this._agentsToBeSynchronized.clear();
     }
 
+    getAgent(agentId: string): Agent | undefined {
+        return this.agents.get(agentId);
+    }
+
     /**
      * Returns the agents occupying the positions in the environment.
      */
-    getAgents(): Agent[] {
-        return Array.from(this.agentsByPosition.values());
+    getTrustedAgents(): Agent[] {
+        return Array.from(this._trustedAgentIds.values())
+            .map((agentId: string) => this.agents.get(agentId))
+            .filter((agent: ObservedAgent) => !agent.isFriendExpired())
+            .map((agent: ObservedAgent) => agent.toAgent());
     }
 
     /**

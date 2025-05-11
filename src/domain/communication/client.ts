@@ -11,6 +11,7 @@ import { Agent } from "@domain/models/agent";
 import type { CryptoConfiguration } from "@domain/models/configurations";
 import { DecayingValue } from "@domain/models/decaying-value";
 import { IdAware } from "@domain/models/id-aware";
+import type { IntentionTypes } from "@domain/models/intention";
 import { PlayerInfo } from "@domain/player-info";
 import type {
     AgentPositionUpdate,
@@ -19,40 +20,82 @@ import type {
     Messenger,
     ParcelInfoMessage,
 } from "./messenger";
-import { IntentionTypes } from "@domain/models/intention";
 
 export class SocketClient implements Actuator, Information, Sensor, Messenger {
     private readonly _socket: Socket;
     private readonly _cipher: Cipher;
 
+    private _myAgentId: string;
+
     constructor(deliverooHost: string, token: string, cryptoConfiguration: CryptoConfiguration) {
         this._socket = io(deliverooHost, {
             autoConnect: true,
-            extraHeaders: {"x-token": token},
+            extraHeaders: { "x-token": token },
         });
 
         this._cipher = new Cipher(cryptoConfiguration);
     }
 
-    shoutIntention(intentionType: IntentionTypes, targetPosition: Position, currentPosition: Position, priority?: number): Promise<void> {
+    shoutIntention(
+        intentionType: IntentionTypes,
+        targetPosition: Position,
+        currentPosition: Position,
+        priority?: number,
+    ): Promise<void> {
         throw new Error("Method not implemented.");
     }
-    shoutHelpRequest(requestType: "pickup" | "delivery", position: Position, parcelIds?: string[], urgency?: number, expiresIn?: number): Promise<string> {
+    shoutHelpRequest(
+        requestType: "pickup" | "delivery",
+        position: Position,
+        parcelIds?: string[],
+        urgency?: number,
+        expiresIn?: number,
+    ): Promise<string> {
         throw new Error("Method not implemented.");
     }
-    sendHelpResponse(targetAgentId: string, requestId: string, accepted: boolean, estimatedTimeToArrive?: number): Promise<void> {
+    sendHelpResponse(
+        targetAgentId: string,
+        requestId: string,
+        accepted: boolean,
+        estimatedTimeToArrive?: number,
+    ): Promise<void> {
         throw new Error("Method not implemented.");
     }
-    sendCoordinationMessage(action: string, position: Position, details?: any, targetAgentId?: string): Promise<void> {
+    sendCoordinationMessage(
+        action: string,
+        position: Position,
+        details?: any,
+        targetAgentId?: string,
+    ): Promise<void> {
         throw new Error("Method not implemented.");
     }
-    sendHandoffRequest(targetAgentId: string, parcelIds: string[], meetingPosition: Position, urgency: number, timeToMeet: number, expiresIn?: number): Promise<string> {
+    sendHandoffRequest(
+        targetAgentId: string,
+        parcelIds: string[],
+        meetingPosition: Position,
+        urgency: number,
+        timeToMeet: number,
+        expiresIn?: number,
+    ): Promise<string> {
         throw new Error("Method not implemented.");
     }
-    sendHandoffResponse(targetAgentId: string, requestId: string, accepted: boolean, parcelIds: string[], meetingPosition: Position, estimatedArrivalTime: number): Promise<void> {
+    sendHandoffResponse(
+        targetAgentId: string,
+        requestId: string,
+        accepted: boolean,
+        parcelIds: string[],
+        meetingPosition: Position,
+        estimatedArrivalTime: number,
+    ): Promise<void> {
         throw new Error("Method not implemented.");
     }
-    sendHandoffConfirm(targetAgentId: string, requestId: string, parcelIds: string[], success: boolean, position: Position): Promise<void> {
+    sendHandoffConfirm(
+        targetAgentId: string,
+        requestId: string,
+        parcelIds: string[],
+        success: boolean,
+        position: Position,
+    ): Promise<void> {
         throw new Error("Method not implemented.");
     }
 
@@ -203,6 +246,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                     new Position(data.x, data.y),
                 );
 
+                this._myAgentId = data.id;
                 resolve(info);
             });
         });
@@ -287,9 +331,16 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         return this.shoutMessage(message);
     }
 
+    replyHelloMessage(message: HelloMessage): Promise<void> {
+        return this.sendMessage(message);
+    }
+
     onHelloMessageReceived(callback: (agent: Agent) => void): void {
         this.onMessageReceived((message: HelloMessage) => {
-            callback(new Agent(message.senderId, message.position, message.score));
+            const agentPosition = new Position(message.position.row, message.position.column);
+            const agent = new Agent(message.senderId, agentPosition, message.score);
+
+            callback(agent);
         });
     }
 
@@ -303,7 +354,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                 return new Parcel(
                     parcel.id,
                     new IdAware(parcel.agentId),
-                    parcel.position,
+                    new Position(parcel.position.row, parcel.position.column),
                     new DecayingValue(parcel.score),
                 );
             });
@@ -319,7 +370,8 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
     onAgentsInfoReceived(callback: (agents: Agent[]) => void): void {
         this.onMessageReceived((message: AgentPositionUpdate) => {
             const parsedAgents: Agent[] = message.agents.map((agent) => {
-                return new Agent(agent.agentId, agent.position, agent.score);
+                const agentPosition = new Position(agent.position.row, agent.position.column);
+                return new Agent(agent.agentId, agentPosition, agent.score);
             });
 
             callback(parsedAgents);
@@ -336,17 +388,17 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
     private sendMessage(message: Message): Promise<void> {
         return new Promise((resolve, _reject) => {
             const encrypted: string = this._cipher.encryptObject(message);
-            return this._socket.emit('say', message.recipientId, encrypted, () => resolve());
-        })
+            return this._socket.emit("say", message.recipientId, encrypted, () => resolve());
+        });
     }
 
     private onMessageReceived(callback: (message: Message) => void): void {
-        this._socket.on("msg", (id: any, _name: any, encryptedMessage: any , reply, test) => {
+        this._socket.on("msg", (id: string, _name: string, encryptedMessage: string) => {
             try {
-                const message: Message = this._cipher.decryptObject(encryptedMessage);
-                reply?.();
-
-                callback(message);
+                if (id !== this._myAgentId) {
+                    const message: Message = this._cipher.decryptObject(encryptedMessage);
+                    callback(message);
+                }
             } catch (ex) {}
         });
     }
