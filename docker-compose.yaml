@@ -71,3 +71,13 @@ services:
     environment:
       - LEVEL=default_map
       - PORT=4001
+
+  handoff_1:
+    image: it.unitn.deliveroojs
+    ports:
+      - "4008:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/handoff_1
+      - PORT=4001

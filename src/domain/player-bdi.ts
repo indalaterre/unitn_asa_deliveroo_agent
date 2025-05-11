@@ -60,14 +60,13 @@ export class PlayerBDI {
      * Coordinator for parcel handoffs between agents
      * @private
      */
-    private _handoffCoordinator: HandoffCoordinator = new HandoffCoordinator();
+    private readonly _handoffCoordinator: HandoffCoordinator;
 
     /**
      * Creates a new player with BDI architecture
      */
     public constructor(
         matchMap: MatchMap,
-        initialParcels: Parcel[],
         sensor: Sensor,
         private readonly actuator: Actuator,
         private readonly messenger: Messenger,
@@ -79,6 +78,13 @@ export class PlayerBDI {
         // Initialize desires manager
         this._desiresManager = new DesiresManager(this._beliefs);
 
+        // Initialize handoff coordinator
+        this._handoffCoordinator = new HandoffCoordinator(
+            this.messenger,
+            this._beliefs,
+            this._desiresManager,
+        );
+
         // Initialize intention manager
         this._intentionManager = new IntentionManager(
             this.actuator,
@@ -87,10 +93,6 @@ export class PlayerBDI {
             this._desiresManager,
             this._handoffCoordinator,
         );
-
-        //TODO: Do we really need this here?
-        //Update beliefs with initial parcels
-        //this._beliefs.queueParcelsSynchronization(parcels);
 
         // Set up sensor handlers
         this.setupSensorHandlers(sensor);
@@ -229,6 +231,10 @@ export class PlayerBDI {
     private async _run(): Promise<void> {
         while (this._isAlive) {
             await new Promise((resolve) => setImmediate(resolve));
+
+            if (this.playerInfo.name === "Amico2") {
+                continue;
+            }
 
             // Synchronize beliefs
             this._beliefs.synchronizeKnownAgents();

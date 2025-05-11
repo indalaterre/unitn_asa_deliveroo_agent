@@ -1,6 +1,9 @@
-import type { Agent, Parcel } from "@domain/models";
-import { Position } from "@domain/models/environment";
-import { Intention, IntentionTypes } from "@domain/models/intention";
+import type { BeliefContainer } from "@domain/beliefs";
+import type { Messenger } from "@domain/communication/messenger";
+import type { DesiresManager } from "@domain/desires";
+import { GameConfiguration } from "@domain/models";
+import type { Position } from "@domain/models/environment";
+import { Intention } from "@domain/models/intention";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -25,7 +28,7 @@ export interface HandoffRequest {
     receiverId: string;
     parcelIds: string[];
     meetingPosition: Position;
-    meetingPath: Position[];
+    meetingPath?: Position[];
     urgency: number;
     timeToMeet: number;
     expiresAt: number;
@@ -46,6 +49,70 @@ export class HandoffCoordinator {
     // Currently active handoff (if any)
     private activeHandoff: HandoffRequest | null = null;
 
+    constructor(
+        private readonly messenger: Messenger,
+        private readonly beliefs: BeliefContainer,
+        private readonly desiresManager: DesiresManager,
+    ) {
+        // Handle incoming handoff requests
+        this.messenger.onHandoffRequestReceived(async (request: HandoffRequest) => {
+            // Store the incoming request
+            this.incomingRequests.set(request.requestId, request);
+            // Process the incoming request (will be handled by the intention manager)
+            await this.handleHandoffRequest(request);
+        });
+
+        // Set up periodic cleanup of expired requests
+        setInterval(() => this.cleanupExpiredRequests(), 5000); // Check every 5 seconds
+    }
+
+    /**
+     * Evaluates whether a handoff is feasible from the receiving agent's perspective
+     * @param request The handoff request to evaluate
+     * @returns True if the handoff appears feasible, false otherwise
+     */
+    private evaluateHandoffFeasibility(request: HandoffRequest): boolean {
+        // Basic feasibility checks that don't require the beliefs container
+
+        // Check if the request is too urgent (meeting time is too soon)
+        const timeToMeeting = request.timeToMeet - Date.now();
+        if (timeToMeeting < 2000) {
+            // Less than 2 seconds to meet
+            return false;
+        }
+
+        // Check if we already have an active handoff
+        if (this.activeHandoff) {
+            return false;
+        }
+
+        // Check if we can reach the meeting position
+        if (this.beliefs.myPosition && request.meetingPosition) {
+            // Calculate path to meeting position if possible
+            const canReachMeeting = this.beliefs.calculateMovingPath(
+                request.meetingPosition,
+                this.beliefs.getOccupiedPositions(),
+            );
+
+            if (!canReachMeeting) {
+                return false;
+            }
+
+            // Check if we can make it to the meeting on time
+            const distanceToMeeting = this.beliefs.myPosition.manhattanDistance(
+                request.meetingPosition,
+            );
+            const timeNeededToReach = distanceToMeeting * 1000; // Rough estimate: 1 second per tile
+
+            if (timeToMeeting < timeNeededToReach) {
+                return false;
+            }
+        }
+
+        // If we passed all checks, the handoff appears feasible
+        return true;
+    }
+
     /**
      * Creates a new handoff request
      * @param initiatorId ID of the agent initiating the handoff
@@ -58,7 +125,7 @@ export class HandoffCoordinator {
      * @param expiresIn Time in milliseconds until this request expires
      * @returns The created handoff request
      */
-    createHandoffRequest(
+    async createHandoffRequest(
         initiatorId: string,
         receiverId: string,
         parcelIds: string[],
@@ -67,7 +134,7 @@ export class HandoffCoordinator {
         urgency: number,
         timeToMeet: number,
         expiresIn = 30000, // Default to 30 seconds
-    ): HandoffRequest {
+    ): Promise<HandoffRequest> {
         const requestId = uuidv4();
         const expiresAt = Date.now() + expiresIn;
 
@@ -85,15 +152,9 @@ export class HandoffCoordinator {
         };
 
         this.outgoingRequests.set(requestId, request);
-        return request;
-    }
+        await this.messenger.sendHandoffRequest(request);
 
-    /**
-     * Registers an incoming handoff request
-     * @param request The handoff request to register
-     */
-    registerIncomingRequest(request: HandoffRequest): void {
-        this.incomingRequests.set(request.requestId, request);
+        return request;
     }
 
     /**
@@ -124,33 +185,6 @@ export class HandoffCoordinator {
 
         request.status = HandoffStatus.REJECTED;
         this.incomingRequests.delete(requestId);
-
-        return request;
-    }
-
-    /**
-     * Updates the status of an outgoing request based on a response
-     * @param requestId ID of the request
-     * @param accepted Whether the request was accepted
-     * @param estimatedArrivalTime When the receiver expects to arrive
-     * @returns The updated handoff request, or null if not found
-     */
-    updateOutgoingRequest(
-        requestId: string,
-        accepted: boolean,
-        estimatedArrivalTime?: number,
-    ): HandoffRequest | null {
-        const request = this.outgoingRequests.get(requestId);
-        if (!request) return null;
-
-        request.status = accepted ? HandoffStatus.ACCEPTED : HandoffStatus.REJECTED;
-
-        if (accepted) {
-            request.estimatedArrivalTime = estimatedArrivalTime;
-            this.activeHandoff = request;
-        } else {
-            this.outgoingRequests.delete(requestId);
-        }
 
         return request;
     }
@@ -193,35 +227,6 @@ export class HandoffCoordinator {
     }
 
     /**
-     * Gets all pending incoming handoff requests
-     * @returns Array of pending incoming handoff requests
-     */
-    getPendingIncomingRequests(): HandoffRequest[] {
-        return Array.from(this.incomingRequests.values()).filter(
-            (request) => request.status === HandoffStatus.PENDING,
-        );
-    }
-
-    /**
-     * Gets all pending outgoing handoff requests
-     * @returns Array of pending outgoing handoff requests
-     */
-    getPendingOutgoingRequests(): HandoffRequest[] {
-        return Array.from(this.outgoingRequests.values()).filter(
-            (request) => request.status === HandoffStatus.PENDING,
-        );
-    }
-
-    /**
-     * Creates an intention for a handoff
-     * @param request The handoff request
-     * @returns An intention to move to the handoff location
-     */
-    createHandoffIntention(request: HandoffRequest): Intention {
-        return Intention.move(request.meetingPosition);
-    }
-
-    /**
      * Cleans up expired handoff requests
      */
     cleanupExpiredRequests(): void {
@@ -245,71 +250,60 @@ export class HandoffCoordinator {
     }
 
     /**
-     * Evaluates if a handoff would be beneficial
-     * @param ownPosition Current position of this agent
-     * @param ownParcels Parcels carried by this agent
-     * @param targetAgent Agent to potentially hand off to
-     * @param deliveryPoints Available delivery points
-     * @returns True if a handoff would be beneficial
+     * Handles a handoff request from another agent
+     * @param request The handoff request to handle
      */
-    isHandoffBeneficial(
-        ownPosition: Position,
-        ownParcels: Parcel[],
-        targetAgent: Agent,
-        deliveryPoints: Position[],
-    ): boolean {
-        if (ownParcels.length === 0) return false;
+    async handleHandoffRequest(request: HandoffRequest): Promise<void> {
+        // Handle incoming requests based on status
+        if (request.status === HandoffStatus.PENDING) {
+            // Evaluate if we should accept the handoff
+            const shouldAccept = this.evaluateHandoffFeasibility(request);
 
-        // Find the closest delivery point to this agent
-        let closestDeliveryToSelf = null;
-        let minDistanceToSelf = Number.POSITIVE_INFINITY;
+            if (shouldAccept) {
+                // Calculate estimated arrival time
+                const pathToMeeting: Position[] = this.beliefs.calculateMovingPath(
+                    request.meetingPosition,
+                    this.beliefs.getOccupiedPositions(),
+                );
 
-        for (const deliveryPoint of deliveryPoints) {
-            const distance = ownPosition.manhattanDistance(deliveryPoint);
-            if (distance < minDistanceToSelf) {
-                minDistanceToSelf = distance;
-                closestDeliveryToSelf = deliveryPoint;
+                const estimatedArrivalTime =
+                    Date.now() +
+                    (pathToMeeting?.length || 1) *
+                        GameConfiguration.movementDuration.seconds *
+                        1000;
+
+                // Accept the request
+                this.acceptIncomingRequest(request.requestId, estimatedArrivalTime);
+
+                // Send acceptance response
+                await this.messenger.sendHandoffConfirm(
+                    request.requestId,
+                    request.receiverId,
+                    request.initiatorId,
+                    estimatedArrivalTime,
+                );
+
+                // Create a move intention to the meeting position
+                const intention: Intention = Intention.move(request.meetingPosition);
+                intention.context = {
+                    handoffRequestId: request.requestId,
+                    isHandoff: true,
+                    isReceiver: true, // Flag that we're receiving parcels
+                    initiatorId: request.initiatorId,
+                    parcelIds: request.parcelIds,
+                };
+
+                this.desiresManager.generateHandoffDesire(
+                    request.requestId,
+                    request.meetingPosition,
+                );
+            } else {
+                // Reject the request
+                this.rejectIncomingRequest(request.requestId);
+
+                //TODO: Here we need to send the handoff response for the rejection
+                throw Error("Handoff request rejected.");
             }
         }
-
-        // Find closest delivery point to target agent
-        let closestDeliveryToTarget = null;
-        let minDistanceToTarget = Number.POSITIVE_INFINITY;
-
-        for (const deliveryPoint of deliveryPoints) {
-            const distance = targetAgent.position.manhattanDistance(deliveryPoint);
-            if (distance < minDistanceToTarget) {
-                minDistanceToTarget = distance;
-                closestDeliveryToTarget = deliveryPoint;
-            }
-        }
-
-        if (!closestDeliveryToSelf || !closestDeliveryToTarget) return false;
-
-        // Calculate distances
-        const selfToDelivery = minDistanceToSelf;
-        const selfToTarget = ownPosition.manhattanDistance(targetAgent.position);
-        const targetToDelivery = minDistanceToTarget;
-
-        // Handoff is beneficial if:
-        // 1. Target is closer to a delivery point than this agent
-        // 2. The combined distance (self to target + target to delivery) is less than self to delivery
-        return (
-            targetToDelivery < selfToDelivery && selfToTarget + targetToDelivery < selfToDelivery
-        );
-    }
-
-    /**
-     * Finds the optimal meeting position for a handoff
-     * @param ownPosition Current position of this agent
-     * @param targetPosition Position of the target agent
-     * @returns The optimal meeting position
-     */
-    findOptimalMeetingPosition(ownPosition: Position, targetPosition: Position): Position {
-        // Simple implementation: meet in the middle
-        const midRow = Math.floor((ownPosition.row + targetPosition.row) / 2);
-        const midCol = Math.floor((ownPosition.column + targetPosition.column) / 2);
-
-        return new Position(midRow, midCol);
     }
 }

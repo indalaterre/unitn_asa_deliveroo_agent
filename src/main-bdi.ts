@@ -3,16 +3,16 @@ import commandLineArgs, { type CommandLineOptions } from "command-line-args";
 import * as dotenv from "dotenv";
 
 import type { Actuator } from "@domain/communication";
-import { SocketClient } from "./domain/communication/client";
-import type { Messenger } from "./domain/communication/messenger";
-import type { Sensor } from "./domain/communication/sensor";
-import { MatchMap } from "./domain/map";
 import {
     type AgentConfiguration,
     type CryptoConfiguration,
     GameConfiguration,
     type PddlConfiguration,
 } from "@domain/models";
+import { SocketClient } from "./domain/communication/client";
+import type { Messenger } from "./domain/communication/messenger";
+import type { Sensor } from "./domain/communication/sensor";
+import { MatchMap } from "./domain/map";
 import { PlayerBDI } from "./domain/player-bdi";
 
 function getConfiguration(): AgentConfiguration {
@@ -117,7 +117,6 @@ async function main(): Promise<void> {
     // Create a player using the BDI architecture
     const player = new PlayerBDI(
         mathMap,
-        initialParcels,
         client as Sensor,
         client as Actuator,
         client as Messenger,

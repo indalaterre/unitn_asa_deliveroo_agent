@@ -1,17 +1,11 @@
 import type { Agent, Parcel } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import { IdAware } from "@domain/models/id-aware";
-import type { IntentionTypes } from "@domain/models/intention";
+import type { HandoffStatus } from "@domain/models/handoff-coordinator";
 import {
     type AgentPositionUpdate,
-    type CoordinationMessage,
     type HandoffConfirmMessage,
     type HandoffRequestMessage,
-    type HandoffResponseMessage,
     type HelloMessage,
-    type HelpRequestMessage,
-    type HelpResponseMessage,
-    type IntentionMessage,
     type Message,
     MessageType,
     type ParcelInfoMessage,
@@ -65,32 +59,6 @@ export class MessageFactory {
     }
 
     /**
-     * Create an Intention message
-     * @param senderId ID of the sending agent
-     * @param intentionType Type of intention
-     * @param targetPosition Target position of the intention
-     * @param currentPosition Current position of the agent
-     * @param priority Optional priority of this intention
-     * @returns IntentionMessage object
-     */
-    public static createIntentionMessage(
-        senderId: string,
-        intentionType: IntentionTypes,
-        targetPosition: Position,
-        currentPosition: Position,
-        priority?: number,
-    ): IntentionMessage {
-        return {
-            ...this.createBaseMessage(MessageType.INTENTION, senderId),
-            type: MessageType.INTENTION,
-            intentionType,
-            targetPosition,
-            currentPosition,
-            priority,
-        };
-    }
-
-    /**
      * Create a Parcel Info message
      * @param senderId ID of the sending agent
      * @param agents Array of agents information to share
@@ -138,85 +106,8 @@ export class MessageFactory {
     }
 
     /**
-     * Create a Help Request message
-     * @param senderId ID of the sending agent
-     * @param requestType Type of help needed ("pickup" or "delivery")
-     * @param position Position where help is needed
-     * @param urgency Urgency level (1-10)
-     * @param expiresAt Timestamp when this request expires
-     * @param parcelIds Optional IDs of parcels involved
-     * @returns HelpRequestMessage object with a generated requestId
-     */
-    public static createHelpRequestMessage(
-        senderId: string,
-        requestType: "pickup" | "delivery",
-        position: Position,
-        urgency: number,
-        expiresAt: number,
-        parcelIds?: string[],
-    ): HelpRequestMessage {
-        const requestId = `help-${senderId}-${Date.now()}`;
-        return {
-            ...this.createBaseMessage(MessageType.HELP_REQUEST, senderId),
-            type: MessageType.HELP_REQUEST,
-            requestId,
-            requestType,
-            position,
-            urgency,
-            expiresAt,
-            parcelIds,
-        };
-    }
-
-    /**
-     * Create a Help Response message
-     * @param senderId ID of the sending agent
-     * @param requestId ID of the request being responded to
-     * @param accepted Whether the help request is accepted
-     * @param estimatedTimeToArrive Optional estimated time to arrive (in milliseconds)
-     * @returns HelpResponseMessage object
-     */
-    public static createHelpResponseMessage(
-        senderId: string,
-        requestId: string,
-        accepted: boolean,
-        estimatedTimeToArrive?: number,
-    ): HelpResponseMessage {
-        return {
-            ...this.createBaseMessage(MessageType.HELP_RESPONSE, senderId),
-            type: MessageType.HELP_RESPONSE,
-            requestId,
-            accepted,
-            estimatedTimeToArrive,
-        };
-    }
-
-    /**
-     * Create a Coordination message
-     * @param senderId ID of the sending agent
-     * @param action Type of coordination action
-     * @param position Position related to the coordination
-     * @param details Additional details about the coordination
-     * @returns CoordinationMessage object
-     */
-    public static createCoordinationMessage(
-        senderId: string,
-        action: "split_parcels" | "clear_area" | "joint_delivery" | "territory_claim",
-        position: Position,
-        details: any,
-    ): CoordinationMessage {
-        return {
-            ...this.createBaseMessage(MessageType.COORDINATION, senderId),
-            type: MessageType.COORDINATION,
-            action,
-            position,
-            details,
-        };
-    }
-
-    /**
      * Create a Handoff Request message
-     * @param senderId ID of the sending agent
+     * @param initiatorId ID of the sending agent
      * @param parcelIds IDs of parcels to hand off
      * @param meetingPosition Proposed meeting location
      * @param urgency Priority of this handoff (1-10)
@@ -225,16 +116,19 @@ export class MessageFactory {
      * @returns HandoffRequestMessage object with a generated requestId
      */
     public static createHandoffRequestMessage(
-        senderId: string,
+        requestId: string,
+        initiatorId: string,
+        receiverId: string,
         parcelIds: string[],
         meetingPosition: Position,
         urgency: number,
         timeToMeet: number,
         expiresAt: number,
+        status: HandoffStatus,
+        estimatedArrivalTime?: number,
     ): HandoffRequestMessage {
-        const requestId = `handoff-${senderId}-${Date.now()}`;
         return {
-            ...this.createBaseMessage(MessageType.HANDOFF_REQUEST, senderId),
+            ...this.createBaseMessage(MessageType.HANDOFF_REQUEST, initiatorId, receiverId),
             type: MessageType.HANDOFF_REQUEST,
             requestId,
             parcelIds,
@@ -242,61 +136,30 @@ export class MessageFactory {
             urgency,
             timeToMeet,
             expiresAt,
-        };
-    }
-
-    /**
-     * Create a Handoff Response message
-     * @param senderId ID of the sending agent
-     * @param requestId ID of the request being responded to
-     * @param accepted Whether the handoff is accepted
-     * @param parcelIds Confirmed parcel IDs to be handed off
-     * @param meetingPosition Confirmed meeting location
-     * @param estimatedArrivalTime When the agent expects to arrive
-     * @returns HandoffResponseMessage object
-     */
-    public static createHandoffResponseMessage(
-        senderId: string,
-        requestId: string,
-        accepted: boolean,
-        parcelIds: string[],
-        meetingPosition: Position,
-        estimatedArrivalTime: number,
-    ): HandoffResponseMessage {
-        return {
-            ...this.createBaseMessage(MessageType.HANDOFF_RESPONSE, senderId),
-            type: MessageType.HANDOFF_RESPONSE,
-            requestId,
-            accepted,
-            parcelIds,
-            meetingPosition,
+            status,
             estimatedArrivalTime,
         };
     }
 
     /**
      * Create a Handoff Confirm message
-     * @param senderId ID of the sending agent
      * @param requestId ID of the original request
-     * @param parcelIds IDs of parcels that were handed off
-     * @param success Whether the handoff was successful
-     * @param position Where the handoff occurred
+     * @param initiatorId ID of the agent that initiated the handoff
+     * @param recipientId ID of the agent that accepted the handoff
+     * @param estimatedArrivalTime When the agent expects to arrive
      * @returns HandoffConfirmMessage object
      */
     public static createHandoffConfirmMessage(
-        senderId: string,
         requestId: string,
-        parcelIds: string[],
-        success: boolean,
-        position: Position,
+        initiatorId: string,
+        recipientId: string,
+        estimatedArrivalTime: number,
     ): HandoffConfirmMessage {
         return {
-            ...this.createBaseMessage(MessageType.HANDOFF_CONFIRM, senderId),
+            ...this.createBaseMessage(MessageType.HANDOFF_CONFIRM, initiatorId, recipientId),
             type: MessageType.HANDOFF_CONFIRM,
             requestId,
-            parcelIds,
-            success,
-            position,
+            estimatedArrivalTime,
         };
     }
 }

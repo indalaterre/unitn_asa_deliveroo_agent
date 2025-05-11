@@ -18,8 +18,8 @@ export enum DesireTypes {
     DELIVER_PARCEL = "DELIVER_PARCEL",
     PICKUP_PARCEL = "PICKUP_PARCEL",
     EXPLORE_ENVIRONMENT = "EXPLORE_ENVIRONMENT",
-    HANDOFF_PARCEL = "HANDOFF_PARCEL",
     PUT_DOWN_PARCEL = "PUT_DOWN_PARCEL",
+    PICKUP_HANDOFF = "PICKUP_HANDOFF",
 }
 
 /**
@@ -71,21 +71,7 @@ export class Desire extends AbstractHashable implements Hashable {
         return new Desire(DesireTypes.EXPLORE_ENVIRONMENT, priority, position);
     }
 
-    /**
-     * Creates a desire to hand off parcels to another agent
-     * @param priority The priority of the desire
-     * @param position The meeting position for the handoff
-     * @param parcelIds The IDs of the parcels to hand off
-     * @param friendId The ID of the partner agent
-     */
-    static handoffParcel(
-        priority: number,
-        position: Position,
-        parcelIds: string[],
-        friendId: string,
-    ): Desire {
-        return new Desire(DesireTypes.HANDOFF_PARCEL, priority, position, { parcelIds, friendId });
-    }
+    // Handoff is now handled as part of the DELIVER_PARCEL desire
 
     /**
      * Creates a desire to put down parcels at a delivery point

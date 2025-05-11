@@ -81,4 +81,8 @@ export class ObservedAgent extends IdAware {
 
         return equal;
     }
+
+    ping(): void {
+        this.lastSeen = Instant.now();
+    }
 }

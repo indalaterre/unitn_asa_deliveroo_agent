@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "build": "tsx esbuild.config.ts",
-    "build-bdi": "tsx esbuild.bdi.config.ts",
+    "build:bdi": "tsx esbuild.bdi.config.ts",
     "start": "node dist/main.js",
     "start:dev": "npm run build && npm run start",
     "start:agent": "npm run build && node dist/main.js --agent-name",

@@ -1,7 +1,7 @@
 import type { PositionWithDistance } from "@domain/map";
-import { type Parcel } from "@domain/models";
-import { EventEmitter } from "eventemitter3";
+import type { Agent, Parcel } from "@domain/models";
 import { HashSet } from "@utils/hashset";
+import { EventEmitter } from "eventemitter3";
 import type { BeliefContainer } from "../beliefs";
 import type { Position } from "../models/environment";
 import { Desire, DesirePriorities, DesireTypes } from "./desire";
@@ -45,7 +45,6 @@ export class DesiresManager {
         // Generate desires based on current state
         this.generateDeliveryDesires();
         this.generatePickupDesires();
-        this.generateHandoffDesires();
         this.generateExplorationDesires();
 
         // Emit event that desires have been updated
@@ -63,7 +62,7 @@ export class DesiresManager {
         }
 
         // Find the best delivery point
-        const deliveryPoint = this.beliefs.findBestDelivery();
+        const deliveryPoint: PositionWithDistance = this.beliefs.findBestDelivery();
         if (!deliveryPoint?.position) {
             return;
         }
@@ -78,15 +77,92 @@ export class DesiresManager {
 
             this._activeDesires.push(putDownDesire);
         } else {
-            // Otherwise, generate DELIVER desire
-            const deliverDesire: Desire = Desire.deliverParcel(
-                80, // Medium-high priority
-                deliveryPoint.position,
-                this.beliefs.carryingParcelIds,
-            );
+            // Check if a handoff would be beneficial
+            const potentialHandoffPartner = this.evaluatePotentialHandoffPartners();
 
-            this._activeDesires.push(deliverDesire);
+            if (potentialHandoffPartner) {
+                // Create a DELIVER desire with handoff context
+                const { agentId, meetingPosition, benefit } = potentialHandoffPartner;
+
+                // Create context with both parcel IDs and handoff information
+                const context = {
+                    parcelIds: this.beliefs.carryingParcelIds,
+                    handoff: {
+                        partnerId: agentId,
+                        meetingPosition: meetingPosition,
+                        benefit: benefit,
+                    },
+                };
+
+                // Create the desire with the combined context
+                const deliverDesire: Desire = new Desire(
+                    DesireTypes.DELIVER_PARCEL,
+                    Math.min(85, 60 + Math.floor(benefit / 5)), // Priority based on benefit
+                    deliveryPoint.position,
+                    context,
+                );
+
+                this._activeDesires.push(deliverDesire);
+            } else {
+                // Standard delivery desire without handoff
+                const deliverDesire: Desire = Desire.deliverParcel(
+                    80, // Medium-high priority
+                    deliveryPoint.position,
+                    this.beliefs.carryingParcelIds,
+                );
+
+                this._activeDesires.push(deliverDesire);
+            }
         }
+    }
+
+    /**
+     * Evaluates potential handoff partners and returns the best one if beneficial
+     * @returns The best handoff partner information or null if no beneficial handoff
+     * @private
+     */
+    private evaluatePotentialHandoffPartners(): {
+        agentId: string;
+        meetingPosition: Position;
+        benefit: number;
+    } | null {
+        // Find potential handoff partners
+        const agents: Agent[] = this.beliefs.getTrustedAgents();
+        let bestPartner = null;
+        let maxBenefit = 0;
+
+        // Evaluate each agent as a potential handoff partner
+        for (const agent of agents) {
+            // Skip if agent is not trusted
+            if (!this.beliefs.isTrustedAgent(agent.agentId)) {
+                continue;
+            }
+
+            // Calculate benefit of handoff
+            const handoffBenefit = this.beliefs.evaluateHandoffBenefit(agent.agentId);
+
+            // Only consider handoff if beneficial and better than current best
+            if (handoffBenefit > 0 && handoffBenefit > maxBenefit) {
+                // Calculate meeting position (midpoint between agents)
+                const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
+                    agent.position,
+                );
+
+                if (handoffPaths?.length >= 2 && handoffPaths[1].length > 0) {
+                    const meetingPosition: Position = handoffPaths[1][0];
+
+                    bestPartner = {
+                        agentId: agent.agentId,
+                        meetingPosition: meetingPosition,
+                        benefit: handoffBenefit,
+                    };
+
+                    maxBenefit = handoffBenefit;
+                }
+            }
+        }
+
+        return bestPartner;
     }
 
     /**
@@ -156,53 +232,7 @@ export class DesiresManager {
         }
     }
 
-    /**
-     * Generates desires to hand off parcels
-     * @private
-     */
-    private generateHandoffDesires(): void {
-        // Only generate handoff desires if carrying parcels
-        if (!this.beliefs.isCarrying) {
-            return;
-        }
-
-        // Find potential handoff partners
-        const agents = this.beliefs.getTrustedAgents();
-
-        // Evaluate each agent as a potential handoff partner
-        for (const agent of agents) {
-            // Skip if agent is not trusted
-            if (!this.beliefs.isTrustedAgent(agent.agentId)) {
-                continue;
-            }
-
-            // Calculate benefit of handoff
-            const handoffBenefit: number = this.beliefs.evaluateHandoffBenefit(agent.agentId);
-
-            // Only consider handoff if beneficial
-            if (handoffBenefit <= 0) {
-                continue;
-            }
-
-            // Calculate meeting position (midpoint between agents)
-            const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
-                agent.position,
-            );
-
-            //We need paths calculation here
-            const meetingPosition: Position = handoffPaths[1][0];
-
-            // Create handoff desire with priority based on benefit
-            const handoffDesire: Desire = Desire.handoffParcel(
-                Math.min(85, 60 + Math.floor(handoffBenefit / 5)), // Priority based on benefit
-                meetingPosition,
-                this.beliefs.carryingParcelIds,
-                agent.agentId,
-            );
-
-            this._activeDesires.push(handoffDesire);
-        }
-    }
+    // Handoff is now handled as part of the DELIVER_PARCEL desire generation
 
     /**
      * Generates desires to explore the environment
@@ -215,12 +245,20 @@ export class DesiresManager {
             return;
         }
 
-        // Create exploration desire with the lowest priority
-        const exploreDesire: Desire = Desire.exploreEnvironment(
-            DesirePriorities.EXPLORATION,
+        //Checking if exploration is possible
+        const explorationPath: Position[] = this.beliefs.calculateMovingPath(
             explorationPoint,
+            this.beliefs.getOccupiedPositions(),
         );
-        this._activeDesires.push(exploreDesire);
+        if (explorationPath?.length) {
+            // Create exploration desire with the lowest priority
+            const exploreDesire: Desire = Desire.exploreEnvironment(
+                DesirePriorities.EXPLORATION,
+                explorationPoint,
+            );
+
+            this._activeDesires.push(exploreDesire);
+        }
     }
 
     /**
@@ -240,28 +278,6 @@ export class DesiresManager {
     }
 
     /**
-     * Gets the highest priority desire
-     * @returns The highest priority desire, or null if none
-     */
-    getHighestPriorityDesire(): Desire | null {
-        if (this._activeDesires.length === 0) {
-            return null;
-        }
-
-        // Sort by priority (descending) and return the first
-        return this.getAllRankedDesires()[0];
-    }
-
-    /**
-     * Gets desires of a specific type
-     * @param type The type of desires to get
-     * @returns Array of desires of the specified type
-     */
-    getDesiresByType(type: DesireTypes): Desire[] {
-        return this._activeDesires.filter((desire) => desire.type === type);
-    }
-
-    /**
      * Marks a desire as failed
      * @param desire The desire that failed
      */
@@ -275,21 +291,7 @@ export class DesiresManager {
         this._eventEmitter.emit("desire:failed", desire);
     }
 
-    /**
-     * Checks if a desire has failed
-     * @param desire The desire to check
-     * @returns True if the desire has failed, false otherwise
-     */
-    hasDesireFailed(desire: Desire): boolean {
-        return this._failedDesires.has(desire);
-    }
-
-    /**
-     * Clears all failed desires
-     */
-    clearFailedDesires(): void {
-        this._failedDesires.clear();
-    }
+    generateHandoffDesire(requestId: string, meetingPosition: Position): void {}
 
     /**
      * Registers an event listener

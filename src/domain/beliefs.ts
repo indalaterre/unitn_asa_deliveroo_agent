@@ -213,9 +213,23 @@ export class BeliefContainer {
                     this.myPosition,
                     parcel.position,
                 );
+
+                const bestParcelDelivery: PositionWithDistance =
+                    this.parcelsDistancesToCloserDelivery.get(parcel.id);
+                if (!bestParcelDelivery) {
+                    return {
+                        context: {
+                            parcel,
+                            weightedScore: Number.POSITIVE_INFINITY,
+                        },
+                        position: parcel.position,
+                        distance: toParcelPath.length,
+                    } as PositionWithDistance;
+                }
+
                 const parcelToDeliveryPath: Position[] = this.map.calculatePath(
                     parcel.position,
-                    this.parcelsDistancesToCloserDelivery.get(parcel.id).position,
+                    bestParcelDelivery.position,
                 );
 
                 if (toParcelPath && parcelToDeliveryPath) {
@@ -270,67 +284,83 @@ export class BeliefContainer {
         // Update all delivery point statuses to account for time decay
         this._deliveryPointManager.updateAllStatuses();
 
-        const bestDeliverySites: PositionWithDistance[] = this.map
-            .getDeliveryTiles()
-            .map((tile: Tile) => tile.position)
-            .filter((position: Position) => !blockedDeliveries?.has(position))
-            .map((tilePosition: Position) => {
-                const distance = this.map.distanceIfPossible(requestPosition, tilePosition);
-                if (distance === null) return null;
+        // Get all delivery tiles and create PositionWithDistance objects for each
+        return (
+            this.map
+                .getDeliveryTiles()
+                .map((tile: Tile) => tile.position)
+                .map((tilePosition: Position) => {
+                    // Check if this delivery point is in the blocked list
+                    const isBlocked = blockedDeliveries?.has(tilePosition);
 
-                // Calculate competitive score using the delivery point manager
-                // This now considers opponent positions and tactical advantage
-                const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
-                    tilePosition,
-                    distance,
-                );
+                    // Calculate path and distance
+                    const path = this.map.calculatePath(
+                        requestPosition,
+                        tilePosition,
+                        blockedDeliveries?.all,
+                    );
+                    const distance = this.map.distanceIfPossible(requestPosition, tilePosition);
 
-                // Get additional agent density from surrounding area
-                const agentsDensity = this._agentsDensityOnTile.get(tilePosition) ?? 0;
+                    // Determine if this point is reachable
+                    const isReachable =
+                        path !== null &&
+                        path.length > 0 &&
+                        distance !== null &&
+                        distance !== Number.POSITIVE_INFINITY;
 
-                // Get tactical advantage score (higher is better)
-                const tacticalAdvantage =
-                    this._deliveryPointManager.getTacticalAdvantageScore(tilePosition);
+                    // Calculate competitive score using the delivery point manager
+                    const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
+                        tilePosition,
+                        distance || Number.POSITIVE_INFINITY,
+                    );
 
-                // Calculate final weighted score (lower is better)
-                // We reduce the score based on tactical advantage (making it more attractive)
-                const weightedScore = competitiveScore + agentsDensity * 0.3;
+                    // Get additional agent density from surrounding area
+                    const agentsDensity = this._agentsDensityOnTile.get(tilePosition) ?? 0;
 
-                return {
-                    distance,
-                    position: tilePosition,
-                    context: {
-                        weightedDistance: weightedScore,
-                        opponentCongestion:
-                            this._deliveryPointManager.getOpponentCongestionLevel(tilePosition),
-                        estimatedWaitTime:
-                            this._deliveryPointManager.getEstimatedWaitTime(tilePosition),
-                        tacticalAdvantage: tacticalAdvantage,
-                    },
-                } as PositionWithDistance;
-            })
-            // Remove null entries (unreachable delivery points)
-            .filter(Boolean)
-            // Sort by weighted score (lower is better)
-            .sort((d1: PositionWithDistance, d2: PositionWithDistance) => {
-                return d1.context.weightedDistance - d2.context.weightedDistance;
-            });
+                    // Get tactical advantage score (higher is better)
+                    const tacticalAdvantage =
+                        this._deliveryPointManager.getTacticalAdvantageScore(tilePosition);
 
-        // Find the first delivery point that has a valid path
-        let chosenBestDelivery: PositionWithDistance = null;
-        for (const delivery of bestDeliverySites) {
-            if (
-                !!this.map.calculatePath(requestPosition, delivery.position, blockedDeliveries?.all)
-            ) {
-                chosenBestDelivery = delivery;
+                    // Calculate final weighted score
+                    const weightedScore = competitiveScore + agentsDensity * 0.3;
 
-                // Register the intention to use this delivery point to update congestion tracking
-                this._deliveryPointManager.registerDeliveryIntent(delivery.position);
-                break;
-            }
-        }
+                    // We'll use the actual weighted score for all points
+                    // The sorting function will handle prioritization
 
-        return chosenBestDelivery;
+                    return {
+                        distance: distance || Number.POSITIVE_INFINITY,
+                        position: tilePosition,
+                        context: {
+                            weightedDistance: weightedScore,
+                            isBlocked: isBlocked,
+                            isReachable: isReachable,
+                            path: path,
+                            opponentCongestion:
+                                this._deliveryPointManager.getOpponentCongestionLevel(tilePosition),
+                            estimatedWaitTime:
+                                this._deliveryPointManager.getEstimatedWaitTime(tilePosition),
+                            tacticalAdvantage: tacticalAdvantage,
+                        },
+                    } as PositionWithDistance;
+                })
+                // Sort with a custom comparator that prioritizes reachable points
+                .sort((d1: PositionWithDistance, d2: PositionWithDistance) => {
+                    // First prioritize by reachability
+                    const d1Reachable = d1.context.isReachable && !d1.context.isBlocked;
+                    const d2Reachable = d2.context.isReachable && !d2.context.isBlocked;
+
+                    if (d1Reachable && !d2Reachable) {
+                        return -1; // d1 comes first (reachable before blocked)
+                    }
+                    if (!d1Reachable && d2Reachable) {
+                        return 1; // d2 comes first (reachable before blocked)
+                    }
+
+                    // If both have same reachability status, sort by weighted score
+                    return d1.context.weightedDistance - d2.context.weightedDistance;
+                })
+                .shift()
+        );
     }
 
     findAdditionalParcelWorthToKeep(delivery: Position): PositionWithDistance {
@@ -405,26 +435,26 @@ export class BeliefContainer {
 
     findBestExplorationSite(): Position {
         // Only consider spawn tiles as potential exploration targets
-        const spawnTiles = this.map.getSpawnTiles();
+        const spawnTiles: Tile[] = this.map.getSpawnTiles();
 
         // Get the agent's visibility distance from game configuration
         const visibilityDistance = GameConfiguration.agentVisibilityDistance;
 
         // Filter spawn tiles to only include those outside the visibility area
-        const tilesOutsideVisibility = spawnTiles.filter((tile) => {
+        const tilesOutsideVisibility: Tile[] = spawnTiles.filter((tile) => {
             const distanceToTile = this._ownPosition.manhattanDistance(tile.position);
             return distanceToTile > visibilityDistance; // Only consider tiles outside visibility range
         });
 
         // First try to find unexplored spawn tiles outside visibility
-        const unexploredTiles = tilesOutsideVisibility
+        const unexploredTiles: Tile[] = tilesOutsideVisibility
             .filter((tile) => !this.visitedTiles.has(tile.position))
             .filter((tile) => !this._temporaryBlockedExplore.has(tile.position));
 
         // If we have unexplored tiles outside visibility, prioritize those
         if (unexploredTiles.length > 0) {
             return unexploredTiles
-                .map((tile) => {
+                .map((tile: Tile) => {
                     const distance = this._ownPosition.manhattanDistance(tile.position);
                     return {
                         position: tile.position,
@@ -440,43 +470,21 @@ export class BeliefContainer {
         if (tilesOutsideVisibility.length > 0) {
             const exploredPositions = tilesOutsideVisibility
                 .filter((tile) => !this._temporaryBlockedExplore.has(tile.position))
-                .map((tile) => {
-                    const position = tile.position;
-                    const visits = this.visitedTiles.get(position) || 0;
-                    const distance = this._ownPosition.manhattanDistance(position);
-                    const agentsDensityMalus = this._agentsDensityOnTile.get(position) || 0;
+                .map((tile) => this.calculateTileExplorationFactor(tile))
+                .sort((a, b) => b.score - a.score) // Higher score is better
+                .filter(Boolean)
+                .map((positionData) => positionData.position)
+                .shift();
 
-                    // Add some randomness to prevent getting stuck
-                    const randomFactor = Math.random() * 1.0;
-
-                    return {
-                        position,
-                        // Higher score is better: prefer less visited tiles that are closer
-                        score:
-                            1 / (visits + 1) - distance * 0.05 - agentsDensityMalus + randomFactor,
-                    };
-                })
-                .sort((a, b) => b.score - a.score); // Higher score is better
-
-            if (exploredPositions.length > 0) {
-                return exploredPositions[0].position;
+            if (!exploredPositions) {
+                return exploredPositions;
             }
         }
 
         // Fallback: If no tiles outside visibility or all are blocked, consider any spawn tile
         const anySpawnTiles = spawnTiles
             .filter((tile) => !this._temporaryBlockedExplore.has(tile.position))
-            .map((tile) => {
-                const position = tile.position;
-                const visits = this.visitedTiles.get(position) || 0;
-                const distance = this._ownPosition.manhattanDistance(position);
-
-                return {
-                    position,
-                    // Prioritize less visited tiles
-                    score: 1 / (visits + 1) + Math.random(),
-                };
-            })
+            .map((tile) => this.calculateTileExplorationFactor(tile))
             .sort((a, b) => b.score - a.score); // Higher score is better
 
         if (anySpawnTiles.length > 0) {
@@ -773,7 +781,7 @@ export class BeliefContainer {
         }
 
         //SPECIAL CASE: Path from my position to best delivery is blocked. We evaluate asking help to a friend
-        if (!bestDelivery?.position) {
+        if (bestDelivery?.distance === Number.POSITIVE_INFINITY) {
             const pathLength: number = myPathToAgent[0].length + myPathToAgent[1].length;
             if (!pathLength) {
                 return -1;
@@ -931,7 +939,8 @@ export class BeliefContainer {
      * @param agentId The ID of the agent to trust
      */
     addTrustedAgent(agentId: string): void {
-        if (agentId && agentId !== this._ownId) {
+        if (this._ownId !== agentId) {
+            this.agents.get(agentId)?.ping();
             this._trustedAgentIds.add(agentId);
         }
     }
@@ -943,5 +952,21 @@ export class BeliefContainer {
      */
     isTrustedAgent(agentId: string): boolean {
         return this._trustedAgentIds.has(agentId);
+    }
+
+    private calculateTileExplorationFactor(tile: Tile) {
+        const position = tile.position;
+        const visits = this.visitedTiles.get(position) || 0;
+        const distance = this._ownPosition.manhattanDistance(position);
+        const agentsDensityMalus = this._agentsDensityOnTile.get(position) || 0;
+
+        // Add some randomness to prevent getting stuck
+        const randomFactor: number = Math.random();
+
+        return {
+            position,
+            // Higher score is better: prefer less visited tiles that are closer
+            score: 1 / (visits + 1) - distance * 0.05 - agentsDensityMalus + randomFactor,
+        };
     }
 }

@@ -5,16 +5,19 @@ import { Directions, Position, Tile, TileType } from "@domain/models/environment
 
 import { Cipher } from "@domain/communication/cipher";
 import type { Information } from "@domain/communication/information";
+import { MessageFactory } from "@domain/communication/message-factory";
 import type { Sensor } from "@domain/communication/sensor";
 import { Duration, type EnvironmentConfiguration, Parcel } from "@domain/models";
 import { Agent } from "@domain/models/agent";
 import type { CryptoConfiguration } from "@domain/models/configurations";
 import { DecayingValue } from "@domain/models/decaying-value";
+import type { HandoffRequest } from "@domain/models/handoff-coordinator";
 import { IdAware } from "@domain/models/id-aware";
-import type { IntentionTypes } from "@domain/models/intention";
 import { PlayerInfo } from "@domain/player-info";
 import type {
     AgentPositionUpdate,
+    HandoffConfirmMessage,
+    HandoffRequestMessage,
     HelloMessage,
     Message,
     Messenger,
@@ -36,67 +39,55 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         this._cipher = new Cipher(cryptoConfiguration);
     }
 
-    shoutIntention(
-        intentionType: IntentionTypes,
-        targetPosition: Position,
-        currentPosition: Position,
-        priority?: number,
-    ): Promise<void> {
-        throw new Error("Method not implemented.");
+    sendHandoffRequest(request: HandoffRequest): Promise<void> {
+        const message: HandoffRequestMessage = MessageFactory.createHandoffRequestMessage(
+            request.requestId,
+            request.initiatorId,
+            request.receiverId,
+            request.parcelIds,
+            request.meetingPosition,
+            request.urgency,
+            request.timeToMeet,
+            request.expiresAt,
+            request.status,
+            request.estimatedArrivalTime,
+        );
+
+        return this.sendMessage(message);
     }
-    shoutHelpRequest(
-        requestType: "pickup" | "delivery",
-        position: Position,
-        parcelIds?: string[],
-        urgency?: number,
-        expiresIn?: number,
-    ): Promise<string> {
-        throw new Error("Method not implemented.");
+
+    onHandoffRequestReceived(callback: (_: HandoffRequest) => void): void {
+        this.onMessageReceived((message: HandoffRequestMessage) => {
+            const request: HandoffRequest = {
+                requestId: message.requestId,
+                initiatorId: message.senderId,
+                receiverId: message.recipientId,
+                parcelIds: message.parcelIds,
+                meetingPosition: message.meetingPosition,
+                urgency: message.urgency,
+                timeToMeet: message.timeToMeet,
+                expiresAt: message.expiresAt,
+                status: message.status,
+                estimatedArrivalTime: message.estimatedArrivalTime,
+            };
+
+            callback(request);
+        });
     }
-    sendHelpResponse(
-        targetAgentId: string,
+
+    sendHandoffConfirm(
         requestId: string,
-        accepted: boolean,
-        estimatedTimeToArrive?: number,
-    ): Promise<void> {
-        throw new Error("Method not implemented.");
-    }
-    sendCoordinationMessage(
-        action: string,
-        position: Position,
-        details?: any,
-        targetAgentId?: string,
-    ): Promise<void> {
-        throw new Error("Method not implemented.");
-    }
-    sendHandoffRequest(
-        targetAgentId: string,
-        parcelIds: string[],
-        meetingPosition: Position,
-        urgency: number,
-        timeToMeet: number,
-        expiresIn?: number,
-    ): Promise<string> {
-        throw new Error("Method not implemented.");
-    }
-    sendHandoffResponse(
-        targetAgentId: string,
-        requestId: string,
-        accepted: boolean,
-        parcelIds: string[],
-        meetingPosition: Position,
+        initiatorId: string,
+        recipientId: string,
         estimatedArrivalTime: number,
     ): Promise<void> {
-        throw new Error("Method not implemented.");
-    }
-    sendHandoffConfirm(
-        targetAgentId: string,
-        requestId: string,
-        parcelIds: string[],
-        success: boolean,
-        position: Position,
-    ): Promise<void> {
-        throw new Error("Method not implemented.");
+        const message: HandoffConfirmMessage = MessageFactory.createHandoffConfirmMessage(
+            requestId,
+            initiatorId,
+            recipientId,
+            estimatedArrivalTime,
+        );
+        return this.sendMessage(message);
     }
 
     move(direction: Directions): Promise<boolean> {
