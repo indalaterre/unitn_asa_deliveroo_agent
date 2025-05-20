@@ -65,7 +65,7 @@ export class BeliefContainer {
     private visitedTiles: HashMap<Position, number> = new HashMap();
 
     /**
-     * Keeps the agents density in a region around the tile long GameConfiguration.agentsDensityRadius
+     * Keeps the agent density in a region around the tile long GameConfiguration.agentsDensityRadius
      * @private
      */
     private _agentsDensityOnTile: HashMap<Position, number> = new HashMap();

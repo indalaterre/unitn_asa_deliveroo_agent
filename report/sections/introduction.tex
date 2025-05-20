@@ -1,0 +1,12 @@
+
+\section{Introduction}
+
+Autonomous agents operating in dynamic environments must balance incomplete knowledge, evolving goals, and timely decision-making. In delivery scenarios—such as logistics, warehouse automation, or simulated pickup-and-delivery tasks—agents are often required to identify high-value items, navigate to their locations, and transport them to designated destinations under constraints such as time pressure or partial observability.
+
+This paper presents a Belief-Desire-Intention (BDI) agent designed for a pickup-and-delivery task in a grid-based environment. The agent begins with limited information: it knows the delivery location, which tiles are navigable, and which can potentially spawn parcels. However, the locations of the parcels themselves are initially unknown and must be discovered through exploration. Furthermore, each parcel's score decays over time, which incentivizes the agent to prioritize its goals efficiently.
+
+By modeling decision-making through the BDI architecture, the agent can dynamically update its beliefs based on observations, generate context-dependent desires, and commit to intentions that balance exploration and exploitation. This work focuses on how the agent selects and pursues intentions under uncertainty, with the aim of maximizing overall delivery performance.
+
+Beyond the single-agent scenario, the DeliverooJS environment also supports collaborative settings via an inter-agent messaging system. We extend our agent design to leverage this capability, allowing agents to coordinate, share perceptions, and optimize parcel collection as a team. This dual focus allows us to explore both individual reasoning under uncertainty and collective planning via lightweight communication.
+
+To evaluate our approach, we introduce a benchmarking suite that compares our BDI agent with other competitive strategies in both single-agent and collaborative scenarios. These benchmarks help assess not only raw performance (e.g., delivery score, responsiveness), but also adaptability and coordination effectiveness in multi-agent settings. By varying map layouts, spawn frequencies, and team sizes, we demonstrate the robustness and flexibility of our agent design across diverse conditions.

@@ -1,0 +1,223 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsfonts}
+\usepackage{graphicx}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\large
+
+\title{A BDI Agent for Pickup-and-Delivery Tasks in Dynamic Environments}
+\author{
+	\IEEEauthorblockN{Mauro Antonio de Palma - 256175}
+	\IEEEauthorblockA{Email: mauroantonio.depalma@studenti.unitn.it}
+	\and
+	\IEEEauthorblockN{Marco Crespi - Matricola}
+	\IEEEauthorblockA{Email: marco.crespi@studenti.unitn.it}
+	
+}
+	
+\begin{document}
+\maketitle
+
+\input{sections/introduction}
+
+\section{Agent Architecture}
+
+The agent in this work is designed using the Belief-Desire-Intention (BDI) model, a well-established framework for building rational agents that operate in dynamic, partially observable environments. In this section, we detail how the BDI paradigm is instantiated for our pickup-and-delivery agent within the DeliverooJS game.
+
+
+\subsection{Beliefs}
+
+Beliefs represent the agent’s internal state of knowledge about the world. In our implementation, the belief base includes:
+\begin{itemize}
+	\item The static map layout (e.g., navigable tiles, parcel spawn points, delivery location),
+	\item The agent’s own position,
+	\item Opponents agent's positions
+	\item Observed parcel locations and their current scores (when visible),
+	\item Messages received from other agents (e.g., shared discoveries),
+	\item Known teammate positions (if communication is enabled).
+\end{itemize}
+
+Beliefs are updated through direct perception (sensor input from the DeliverooJS API) and inter-agent communication. The belief update function fuses new perceptions into the existing knowledge base, overwriting outdated observations or appending new information as needed.
+
+\subsection{Desires}
+
+Desires capture the agent’s possible goals, given its current beliefs. In our context, the agent dynamically constructs a set of candidate desires such as:
+\begin{itemize}
+	\item Deliver the parcel at position $p$ before its value decays significantly,
+	\item Explore an unexplored tile to find potential parcels,
+	\item Move toward a teammate to coordinate a pickup,
+	\item Avoid congestion in high-traffic zones.
+\end{itemize}
+
+Each desire is associated with a utility score based on criteria like proximity, parcel value decay, and current task urgency. For instance, a parcel with high value and short delivery distance is prioritized over distant or low-value ones.
+
+\subsection{Intentions and Planning}
+
+Intentions are the subset of desires that the agent commits to pursuing. Commitment is governed by a filtering function that considers:
+\begin{itemize}
+	\item The utility of each desire,
+	\item Resource limitations (e.g., the agent can carry only one parcel at a time),
+	\item Team-level priorities (if operating in collaborative mode).
+\end{itemize}
+
+Once intentions are selected, the agent invokes a planning function to generate an executable plan $\pi$ — a sequence of actions such as \texttt{move}, \texttt{pickup}, and \texttt{deliver}. The plan is constructed using the goal-directed search A*, constrained by the current beliefs.
+
+\subsection{Communication and Coordination}
+
+In collaborative scenarios, agents utilize DeliverooJS’s messaging system to share critical beliefs. This includes discovered parcel locations, unreachable areas, or intentions (e.g., ``I am picking up parcel at (5,3)''). The belief base is extended to include received messages, which influence both desire generation and intention filtering.
+
+Communication is kept lightweight to minimize overhead and ensure reactivity. Messages are structured and timestamped, and each agent processes them before the next BDI cycle.
+
+\subsection{BDI Control Loop}
+
+The complete reasoning cycle of the agent is described in Algorithm~\ref{alg:bdi-loop}. This loop ensures the agent continuously adapts its plans based on environmental changes and new information.
+
+\begin{algorithm}
+	\caption{BDI Control Loop}
+	\label{alg:bdi-loop}
+	\KwIn{Initial beliefs $B_0$, desire evaluation function $\texttt{GenerateDesires}$, plan library $\mathcal{P}$}
+	\KwOut{Action stream sent to actuators}
+	$B \gets B_0$\;
+	\While{agent is active}{
+		$O \gets \texttt{PerceiveEnvironment()}$\;
+		$M \gets \texttt{ReceiveMessages()}$\;
+		
+		$B \gets \texttt{UpdateBeliefs}(B, O, M)$\;
+		
+		$D \gets \texttt{GenerateDesires}(B)$\;
+		$I \gets \texttt{FilterIntentions}(D, B)$\;
+		
+		\If{$\texttt{NeedNewPlan}(I, B)$}{
+			$\pi \gets \texttt{Plan}(I, B, \mathcal{P})$\;
+			$\texttt{CommitTo}(\pi)$\;
+		}
+		
+		$\alpha \gets \texttt{ExecuteNextAction}(\pi)$\;
+		\texttt{SendToActuators}($\alpha$)\;
+	}
+\end{algorithm}
+
+\section{Communication protocol}
+
+The DeliverooJS environment enables agents to exchange information using two primitive messaging methods:
+\begin{itemize}
+	\item \texttt{shout(message)} — broadcasts a message to all agents within communication range,
+	\item \texttt{say(agentId, message)} — sends a direct message to a specific agent identified by its unique ID.
+\end{itemize}
+
+At runtime, each agent periodically broadcasts a \texttt{HELLO} message using \texttt{shout}. This behavior is crucial in dynamic scenarios where agents can spawn at any time during execution. Broadcasting \texttt{HELLO} ensures that newly spawned agents can discover existing teammates and integrate into a collaborative strategy.
+
+Once an agent receives a valid \texttt{HELLO} message and confirms it matches expected grammar and cryptographic properties, it adds the sender to its list of known allies. At that point, the agent can initiate collaborative behaviors, such as sharing parcel discoveries, coordinating pickup assignments, or load balancing deliveries. [\textit{Collaboration logic will be described in a future section.}]
+
+\subsubsection{Security and Trust}
+
+To ensure message confidentiality and prevent man-in-the-middle attacks, all inter-agent messages are encrypted using the AES (Advanced Encryption Standard) symmetric-key algorithm. Each agent shares a pre-established key known only to legitimate team members.
+
+In addition to encryption, message integrity and authenticity are checked using an internal message grammar. Agents are designed to only accept messages that conform to this strict format. If a received message fails grammatical validation, it is discarded as potentially spoofed or corrupted.
+
+This two-layer approach—cryptographic encryption combined with grammatical validation—helps establish trust and resilience in adversarial or noisy communication settings, where both misinformation and interference are possible.
+
+[\textit{Detailed message formats, encryption keys, and validation schemes will be formalized in a dedicated appendix or protocol specification section.}]
+
+\section{Beliefs}
+
+The belief base defines the agent’s internal model of the environment and is updated over time based on direct perceptions and messages from allies. It includes both static world knowledge and dynamic runtime observations.
+
+\subsection{Static Map Knowledge}
+
+At initialization, the agent is provided with full knowledge of the environment's layout. Each tile in the grid map is labeled using the following enumeration:
+
+\begin{itemize}
+	\item \texttt{WALKABLE}: tiles the agent can navigate through,
+	\item \texttt{SPAWN}: tiles where parcels may appear,
+	\item \texttt{DELIVERY}: the known drop-off location for parcels,
+	\item \texttt{NON\_WALKABLE}: obstacles or unreachable areas.
+\end{itemize}
+
+Before its main decision loop begins, the agent preprocesses the tile map into a graph structure, where nodes represent \texttt{WALKABLE} tiles, and edges link adjacent nodes (using 4-directional movement). This graph supports efficient path planning using the A* algorithm. 
+
+In addition, the agent analyzes the graph’s connected components to identify unreachable sections. This ensures it does not attempt to reach parcels or tiles in disconnected areas of the map.
+
+\subsection{Pathfinding and Heuristics}
+
+Navigation relies on A* search, where the cost function combines path length and a heuristic estimate of remaining distance. The heuristic used is the Manhattan distance:
+
+\[
+h(n) = |x_n - x_g| + |y_n - y_g|
+\]
+
+where $(x_n, y_n)$ is the current tile and $(x_g, y_g)$ is the goal. This reflects the environment’s movement constraints and ensures consistent, admissible guidance for the planner.
+
+\subsection{Dynamic Beliefs}
+
+Over time, the agent updates its beliefs to reflect changing or discovered information. Dynamic beliefs include:
+
+\begin{itemize}
+	\item \textbf{Parcel positions and scores:} As parcels appear within the agent’s field of view, or are communicated by allies, their location and time-sensitive score are stored. Since scores decay over time, the agent continuously updates or prunes this data.
+	
+	\item \textbf{Opponent positions:} When visible, opponents’ positions are recorded. These beliefs help avoid conflicts (e.g., when racing to the same parcel) or to identify blocked routes.
+	
+	\item \textbf{Ally intentions (collaborative mode):} In team scenarios, allies may share their current goals, planned paths, or discovered parcels. These beliefs are integrated to coordinate pickup strategies and reduce redundancy.
+	
+	\item \textbf{Exploration state:} The agent keeps track of visited and unvisited tiles, allowing it to prioritize unexplored areas when no known parcels are available.
+\end{itemize}
+
+All dynamic beliefs are time-sensitive. Data is associated with timestamps or observation turns and is discarded after expiration or when proven obsolete (e.g., a parcel has already been picked up).
+
+\subsection{Exploration Heuristics}
+
+When no known parcels are immediately reachable, the agent engages in active exploration. Its goal is to discover new parcels by visiting promising areas (\texttt{SPAWN} tiles) where parcels are likely to appear.
+
+To prioritize unexplored regions, the agent assigns a dynamic score to each spawn tile using a multi-factor exploration heuristic. This heuristic favors tiles that are:
+
+\begin{itemize}
+	\item Less frequently visited,
+	\item Closer to the agent's current position,
+	\item Less crowded by other agents,
+	\item Slightly randomized to avoid deterministic loops.
+\end{itemize}
+
+Formally, the exploration score $S(p)$ for a tile $p$ at position $\mathbf{p}$ is defined as:
+
+\[
+S(p) = \frac{1}{v(\mathbf{p}) + 1} - 0.05 \cdot d(\mathbf{p}) - a(\mathbf{p}) + r
+\]
+
+where:
+\begin{itemize}
+	\item $v(\mathbf{p})$ is the number of times the agent has visited tile $\mathbf{p}$,
+	\item $d(\mathbf{p})$ is the Manhattan distance from the agent’s current position to $\mathbf{p}$,
+	\item $a(\mathbf{p})$ is the estimated density of other agents near $\mathbf{p}$,
+	\item $r$ is a small random factor sampled uniformly in $[0, 1)$ to break ties and encourage stochasticity.
+\end{itemize}
+
+The agent maintains a priority queue of candidate tiles ranked by $S(p)$ and selects the top-scoring tile for exploration. This mechanism allows for efficient coverage of the map and adapts to both teammate activity and environmental congestion.
+
+\section{Desires}
+
+Desires represent the goals that the agent might pursue, based on its current beliefs. In our system, each desire is a structured object defined by a type, priority value, optional target position, and additional contextual information. Desires are generated dynamically in each BDI reasoning cycle and are later filtered to determine which intention(s) to commit to.
+
+\subsection{Desire Representation}
+
+Each desire belongs to one of several predefined types, formalized in the \texttt{DesireTypes} enumeration:
+
+\begin{itemize}
+	\item \texttt{DELIVER\_PARCEL}: Bring one or more carried parcels to the delivery zone,
+	\item \texttt{PICKUP\_PARCEL}: Navigate to a known parcel and pick it up,
+	\item \texttt{EXPLORE\_ENVIRONMENT}: Investigate unexplored spawn tiles,
+	\item \texttt{PUT\_DOWN\_PARCEL}: Drop parcels on the delivery point (e.g., after a handoff),
+	\item \texttt{PICKUP\_HANDOFF}: Receive a parcel from another agent (handled implicitly).
+\end{itemize}
+
+Each desire is also associated with a numeric priority from the \texttt{DesirePriorities} enumeration. These priorities determine the desirability of a goal and influence which intentions are selected. Examples include:
+
+\begin{itemize}
+	\item \texttt{PRIORITY\_PICKUP} = 100 (e.g., urgent parcel pickup),
+	\item \texttt{PICKUP} = 80 (standard pickups),
+	\item \texttt{EXPLORATION} = 50 (spawn tile exploration).
+\end{itemize}
+
+Each BDI cycle triggers a regeneration of the desire set. As new parcels are discovered, agent roles evolve, or tiles are explored, old desires are discarded and new ones are created. This dynamic refresh allows the agent to stay responsive and adaptive to environmental changes.
+
+
+\end{document}
