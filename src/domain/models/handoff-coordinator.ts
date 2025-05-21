@@ -36,6 +36,14 @@ export interface HandoffRequest {
     estimatedArrivalTime?: number;
 }
 
+export interface HandoffResponse {
+    requestId: string;
+    initiatorId: string;
+    receiverId: string;
+    status: HandoffStatus;
+    estimatedArrivalTime: number;
+}
+
 /**
  * Manages handoff coordination between agents
  */
@@ -60,6 +68,13 @@ export class HandoffCoordinator {
             this.incomingRequests.set(request.requestId, request);
             // Process the incoming request (will be handled by the intention manager)
             await this.handleHandoffRequest(request);
+        });
+
+        // Handle incoming handoff response
+        this.messenger.onHandoffResponseReceived(async (response: HandoffResponse) => {
+
+            await this.handleHandoffResponse(response);
+
         });
 
         // Set up periodic cleanup of expired requests
@@ -102,7 +117,7 @@ export class HandoffCoordinator {
             const distanceToMeeting = this.beliefs.myPosition.manhattanDistance(
                 request.meetingPosition,
             );
-            const timeNeededToReach = distanceToMeeting * 1000; // Rough estimate: 1 second per tile
+            const timeNeededToReach = distanceToMeeting * GameConfiguration.movementDuration.milliseconds;
 
             if (timeToMeeting < timeNeededToReach) {
                 return false;
@@ -254,6 +269,11 @@ export class HandoffCoordinator {
      * @param request The handoff request to handle
      */
     async handleHandoffRequest(request: HandoffRequest): Promise<void> {
+
+        if (request.initiatorId == this.beliefs.myId) {
+            return;
+        }
+
         // Handle incoming requests based on status
         if (request.status === HandoffStatus.PENDING) {
             // Evaluate if we should accept the handoff
@@ -275,35 +295,80 @@ export class HandoffCoordinator {
                 // Accept the request
                 this.acceptIncomingRequest(request.requestId, estimatedArrivalTime);
 
-                // Send acceptance response
-                await this.messenger.sendHandoffConfirm(
-                    request.requestId,
-                    request.receiverId,
-                    request.initiatorId,
-                    estimatedArrivalTime,
-                );
 
-                // Create a move intention to the meeting position
-                const intention: Intention = Intention.move(request.meetingPosition);
-                intention.context = {
-                    handoffRequestId: request.requestId,
-                    isHandoff: true,
-                    isReceiver: true, // Flag that we're receiving parcels
-                    initiatorId: request.initiatorId,
-                    parcelIds: request.parcelIds,
-                };
-
-                this.desiresManager.generateHandoffDesire(
+                this.desiresManager.generatePickupHandoffDesire(
                     request.requestId,
                     request.meetingPosition,
                 );
+
+                // Send acceptance response
+                await this.messenger.sendHandoffResponseMessage(
+                    {
+                        requestId: request.requestId,
+                        initiatorId: this.beliefs.myId,
+                        receiverId: request.initiatorId,
+                        status: HandoffStatus.ACCEPTED,
+                        estimatedArrivalTime: estimatedArrivalTime
+                    } as HandoffResponse
+                );
+
+                // Create a move intention to the meeting position
+                //const intention: Intention = Intention.move(request.meetingPosition);
+                //intention.context = {
+                //    handoffRequestId: request.requestId,
+                //    isHandoff: true,
+                //    isReceiver: true, // Flag that we're receiving parcels
+                //    initiatorId: request.initiatorId,
+                //    parcelIds: request.parcelIds,
+                //};
+
             } else {
                 // Reject the request
                 this.rejectIncomingRequest(request.requestId);
 
+                // Send reject response
+                await this.messenger.sendHandoffResponseMessage(
+                    {
+                        requestId: request.requestId,
+                        status: HandoffStatus.REJECTED,
+                        estimatedArrivalTime: null
+                    } as HandoffResponse
+                );
+
                 //TODO: Here we need to send the handoff response for the rejection
-                throw Error("Handoff request rejected.");
+                //throw Error("Handoff request rejected.");
             }
         }
+    }
+
+    /**
+     * Handles a handoff response from another agent
+     * @param response The handoff response to handle
+     */
+    async handleHandoffResponse(response: HandoffResponse): Promise<void> {
+
+        switch (response.status) {
+            case HandoffStatus.ACCEPTED:
+                
+                if (this.outgoingRequests.has(response.requestId)) {
+                    this.desiresManager.generatePutDownHandoffDesire(
+                        response.requestId,
+                        this.outgoingRequests.get(response.requestId).meetingPosition,
+                    );
+
+                    this.activeHandoff = this.outgoingRequests.get(response.requestId)
+                }
+
+            case HandoffStatus.REJECTED:
+
+                // TODO: do something
+                this.completeHandoff(response.requestId, false);
+
+                break;
+
+            default:
+                console.log(`handleHandoffResponse not valid response status: ${response.status}`);
+        }
+
     }
 }

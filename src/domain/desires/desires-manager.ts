@@ -291,7 +291,52 @@ export class DesiresManager {
         this._eventEmitter.emit("desire:failed", desire);
     }
 
-    generateHandoffDesire(requestId: string, meetingPosition: Position): void {}
+    generatePickupHandoffDesire(requestId: string, meetingPosition: Position): void {
+
+        //Checking if exploration is possible
+        const meetingPath: Position[] = this.beliefs.calculateMovingPath(
+            meetingPosition,
+            this.beliefs.getOccupiedPositions(),
+        );
+        if (meetingPath?.length) {
+            // Create pickup handoff desire with the highest priority
+            const exploreDesire: Desire = Desire.pickupHandoff(
+                requestId,
+                DesirePriorities.HANDOFF_PRIORITY,
+                meetingPosition,
+            );
+
+            this._activeDesires.push(exploreDesire);
+        } else {
+            // TODO: do something
+            throw "generatePickupHandoffDesire: No path found"
+        }
+
+    }
+
+    generatePutDownHandoffDesire(requestId: string, meetingPosition: Position): void {
+
+        //Checking if exploration is possible
+        const meetingPath: Position[] = this.beliefs.calculateMovingPath(
+            meetingPosition,
+            this.beliefs.getOccupiedPositions(),
+        );
+        if (meetingPath?.length) {
+            // Create pickup handoff desire with the highest priority
+            const exploreDesire: Desire = Desire.putDownHandoff(
+                requestId,
+                DesirePriorities.HANDOFF_PRIORITY,
+                meetingPosition,
+            );
+
+            this._activeDesires.push(exploreDesire);
+        } else {
+            // TODO: do something
+
+            throw "generatePutDownHandoffDesire: No path found"
+        }
+
+    }
 
     /**
      * Registers an event listener

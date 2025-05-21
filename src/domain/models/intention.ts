@@ -9,6 +9,9 @@ export enum IntentionTypes {
 
     EXPLORE = 3,
     DELIVER = 4,
+
+    PICK_UP_HANDOFF = 5,
+    PUT_DOWN_HANDOFF = 6,
 }
 
 export class Intention extends AbstractHashable implements Hashable {

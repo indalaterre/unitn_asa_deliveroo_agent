@@ -1,6 +1,6 @@
 import type { Agent, Parcel } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import type { HandoffRequest, HandoffStatus } from "@domain/models/handoff-coordinator";
+import type { HandoffRequest, HandoffStatus, HandoffResponse } from "@domain/models/handoff-coordinator";
 
 /**
  * Message types for agent communication
@@ -77,8 +77,9 @@ export interface HandoffRequestMessage extends Message {
 /**
  * Handoff confirmation message
  */
-export interface HandoffConfirmMessage extends Message {
-    type: MessageType.HANDOFF_CONFIRM;
+export interface HandoffResponseMessage extends Message {
+    type: MessageType.HANDOFF_RESPONSE;
+    status: HandoffStatus;  // 
     requestId: string; // ID of the original request
     estimatedArrivalTime: number; // When the agent expected to arrive
 }
@@ -145,16 +146,16 @@ export interface Messenger {
     onHandoffRequestReceived(callback: (request: HandoffRequest) => void): void;
 
     /**
-     * Confirm a handoff has occurred
-     * @param requestId ID of the original request
-     * @param initiatorId ID of the agent that initiated the handoff
-     * @param recipientId ID of the agent that accepted the handoff
-     * @param estimatedArrivalTime When the agent expects to arrive
+     * 
+     * @param callback 
      */
-    sendHandoffConfirm(
-        requestId: string,
-        initiatorId: string,
-        recipientId: string,
-        estimatedArrivalTime: number,
+    onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void;
+
+    /**
+     * 
+     * @param handoffMessage 
+     */
+    sendHandoffResponseMessage(
+        handoffMessage: HandoffResponse
     ): Promise<void>;
 }

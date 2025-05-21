@@ -3,7 +3,7 @@ import type { Position } from "@domain/models/environment";
 import type { HandoffStatus } from "@domain/models/handoff-coordinator";
 import {
     type AgentPositionUpdate,
-    type HandoffConfirmMessage,
+    type HandoffResponseMessage,
     type HandoffRequestMessage,
     type HelloMessage,
     type Message,
@@ -149,15 +149,17 @@ export class MessageFactory {
      * @param estimatedArrivalTime When the agent expects to arrive
      * @returns HandoffConfirmMessage object
      */
-    public static createHandoffConfirmMessage(
+    public static createHandoffResponseMessage(
         requestId: string,
         initiatorId: string,
-        recipientId: string,
+        receiverId: string,
+        status: HandoffStatus,
         estimatedArrivalTime: number,
-    ): HandoffConfirmMessage {
+    ): HandoffResponseMessage {
         return {
-            ...this.createBaseMessage(MessageType.HANDOFF_CONFIRM, initiatorId, recipientId),
-            type: MessageType.HANDOFF_CONFIRM,
+            ...this.createBaseMessage(MessageType.HANDOFF_RESPONSE, initiatorId, receiverId),
+            type: MessageType.HANDOFF_RESPONSE,
+            status,
             requestId,
             estimatedArrivalTime,
         };

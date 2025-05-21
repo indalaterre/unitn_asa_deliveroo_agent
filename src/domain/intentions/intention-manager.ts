@@ -153,6 +153,14 @@ export class IntentionManager {
                 case DesireTypes.EXPLORE_ENVIRONMENT:
                     this.generateExploreIntention(desire);
                     break;
+
+                case DesireTypes.PICKUP_HANDOFF:
+                    this.generatePickupHandoffIntention(desire);
+                    break;
+                
+                case DesireTypes.PUT_DOWN_HANDOFF:
+                    this.generatePutDownHandoffIntention(desire);
+                    break;
             }
         }
 
@@ -208,7 +216,7 @@ export class IntentionManager {
                     partnerId,
                     desire.context.parcelIds,
                     meetingPosition,
-                    handoffPaths[0],
+                    null,
                     Math.min(10, Math.ceil(desire.priority / 10)), // Urgency based on priority
                     meetingTime,
                 );
@@ -280,6 +288,32 @@ export class IntentionManager {
         this.processMovingIntention(intention, desire);
 
         this._intentionQueue.add(intention, desire.priority);
+    }
+
+    /**
+     * Generates an PICKUP_HANDOFF intention from a desire
+     * @param desire The desire to convert
+     */
+    private generatePickupHandoffIntention(desire: Desire): void {
+        const intention: Intention = Intention.move(desire.position);
+        intention.context = {
+            handoffRequestId: desire.context.requestId,
+            isHandoff: true,
+            isReceiver: true, // Flag that we're receiving parcels
+        };
+    }
+
+    /**
+     * Generates an PUT_DOWN_HANDOFF intention from a desire
+     * @param desire The desire to convert
+     */
+    private generatePutDownHandoffIntention(desire: Desire): void {
+        const intention: Intention = Intention.putDown(desire.position);
+        intention.context = {
+            handoffRequestId: desire.context.requestId,
+            isHandoff: true,
+            isReceiver: false, // Flag that we're receiving parcels
+        };
     }
 
     /**

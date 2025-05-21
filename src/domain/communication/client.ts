@@ -11,12 +11,12 @@ import { Duration, type EnvironmentConfiguration, Parcel } from "@domain/models"
 import { Agent } from "@domain/models/agent";
 import type { CryptoConfiguration } from "@domain/models/configurations";
 import { DecayingValue } from "@domain/models/decaying-value";
-import type { HandoffRequest } from "@domain/models/handoff-coordinator";
+import type { HandoffRequest, HandoffResponse } from "@domain/models/handoff-coordinator";
 import { IdAware } from "@domain/models/id-aware";
 import { PlayerInfo } from "@domain/player-info";
 import type {
     AgentPositionUpdate,
-    HandoffConfirmMessage,
+    HandoffResponseMessage,
     HandoffRequestMessage,
     HelloMessage,
     Message,
@@ -56,14 +56,14 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         return this.sendMessage(message);
     }
 
-    onHandoffRequestReceived(callback: (_: HandoffRequest) => void): void {
+    onHandoffRequestReceived(callback: (request: HandoffRequest) => void): void {
         this.onMessageReceived((message: HandoffRequestMessage) => {
-            const request: HandoffRequest = {
+            const parsedRequest: HandoffRequest = {
                 requestId: message.requestId,
                 initiatorId: message.senderId,
                 receiverId: message.recipientId,
                 parcelIds: message.parcelIds,
-                meetingPosition: message.meetingPosition,
+                meetingPosition: new Position(message.meetingPosition.row, message.meetingPosition.column),
                 urgency: message.urgency,
                 timeToMeet: message.timeToMeet,
                 expiresAt: message.expiresAt,
@@ -71,23 +71,39 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                 estimatedArrivalTime: message.estimatedArrivalTime,
             };
 
-            callback(request);
+            callback(parsedRequest);
         });
     }
 
-    sendHandoffConfirm(
-        requestId: string,
-        initiatorId: string,
-        recipientId: string,
-        estimatedArrivalTime: number,
+    sendHandoffResponseMessage(
+        handoffResponse: HandoffResponse
     ): Promise<void> {
-        const message: HandoffConfirmMessage = MessageFactory.createHandoffConfirmMessage(
-            requestId,
-            initiatorId,
-            recipientId,
-            estimatedArrivalTime,
+        const message: HandoffResponseMessage = MessageFactory.createHandoffResponseMessage(
+            handoffResponse.requestId,
+            handoffResponse.initiatorId,
+            handoffResponse.receiverId,
+            handoffResponse.status,
+            handoffResponse.estimatedArrivalTime,
         );
         return this.sendMessage(message);
+    }
+
+    /**
+     * 
+     * @param callback 
+     */
+    onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void {
+        this.onMessageReceived((message: HandoffResponseMessage) => {
+            const parsedResponse: HandoffResponse = {
+                requestId: message.requestId,
+                initiatorId: message.senderId,
+                receiverId: message.recipientId,
+                status: message.status,
+                estimatedArrivalTime: message.estimatedArrivalTime,
+            };
+
+            callback(parsedResponse);
+        });
     }
 
     move(direction: Directions): Promise<boolean> {
@@ -383,14 +399,16 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         });
     }
 
-    private onMessageReceived(callback: (message: Message) => void): void {
+    private onMessageReceived<T extends Message>(callback: (message: T) => void): void {
         this._socket.on("msg", (id: string, _name: string, encryptedMessage: string) => {
             try {
                 if (id !== this._myAgentId) {
-                    const message: Message = this._cipher.decryptObject(encryptedMessage);
+                    const message: T = this._cipher.decryptObject(encryptedMessage);
                     callback(message);
                 }
-            } catch (ex) {}
+            } catch (ex) {
+                const a = 1;
+            }
         });
     }
 }
