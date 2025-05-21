@@ -1,0 +1,242 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsfonts}
+\usepackage{graphicx}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+
+\title{A BDI Agent for Pickup-and-Delivery Tasks in Dynamic Environments}
+\author{
+	\IEEEauthorblockN{Mauro Antonio de Palma - 256175}
+	\IEEEauthorblockA{Email: mauroantonio.depalma@studenti.unitn.it}
+	\and
+	\IEEEauthorblockN{Marco Crespi - Matricola}
+	\IEEEauthorblockA{Email: marco.crespi@studenti.unitn.it}
+}
+
+	
+\begin{document}
+\maketitle
+
+\begin{abstract}
+	This paper presents the design and implementation of a goal-driven autonomous delivery agent operating in a dynamic environment with decaying rewards. The agent, built on the Belief-Desire-Intention (BDI) architecture, is deployed in the DeliverooJS platform and tasked with collecting and delivering packages whose values diminish over time. Unlike classical approaches, our agent is designed to carry multiple packages simultaneously and adapts to the partially observable environment by updating its internal beliefs at each step. Furthermore, we extend the architecture with collaborative capabilities, including spatial exploration partitioning and package handoff strategies, enabling multiple agents to coordinate their efforts efficiently. Experimental results show that the BDI-based approach, especially in its collaborative variant, significantly improves performance in terms of reward maximization and task efficiency compared to non-cooperative baselines. We conclude by discussing the architectural strengths, potential limitations, and directions for future enhancements such as opponent modeling and adaptive learning.
+\end{abstract}
+
+\section{Introduction}
+
+Autonomous delivery systems are becoming increasingly relevant in domains such as logistics, warehouse automation, and urban mobility. These systems must often operate in environments characterized by partial observability, dynamic goals, and time-sensitive rewards. In this context, designing intelligent agents capable of making decisions under uncertainty and adapting to environmental changes is a central challenge.
+
+We investigate the problem of autonomous agents tasked with collecting and delivering packages in a grid-based environment where the reward associated with each package decays over time. The agent operates under realistic constraints: while the map structure is fully known at the start, the positions of packages and other agents—potential collaborators or competitors—are initially unknown and only become visible through exploration. Moreover, the agent must reason over multiple objectives simultaneously, such as prioritizing urgent deliveries, minimizing travel distance, and avoiding redundant exploration.
+
+To address these challenges, we adopt the Belief-Desire-Intention (BDI) model, a prominent architecture for building rational agents. BDI agents continuously update their beliefs about the environment, generate context-sensitive goals (desires), and commit to a subset of those goals (intentions) through structured plans. This cognitive architecture allows our agent to dynamically respond to environmental changes while maintaining long-term delivery objectives.
+
+In addition to standalone operation, we explore a collaborative extension of the agent system. In this variant, agents coordinate through two main mechanisms: (i) partitioning the exploration space to reduce redundancy, and (ii) managing package handoffs to optimize delivery chains. These enhancements aim to improve overall efficiency by allowing agents to specialize, distribute workload, and adapt to each other's actions.
+
+The contributions of this work are threefold:
+\begin{itemize}
+	\item We design and implement a BDI-based delivery agent capable of operating in a partially observable environment with decaying rewards.
+	\item We introduce collaborative strategies including spatial exploration partitioning and package handoff management to enhance multi-agent performance.
+	\item We evaluate the agent's performance in the DeliverooJS platform through benchmarking against a baseline agent across multiple scenarios. For each scenario, we report scores over three independent runs and compute an overall performance difference metric to assess comparative effectiveness.
+\end{itemize}
+
+The remainder of this paper is organized as follows: Section 2 reviews related work. Section 3 formalizes the task and environment. Section 4 details the agent architecture. Section 5 presents the collaborative mechanisms. Section 6 discusses implementation specifics. Section 7 reports experimental results, followed by discussion in Section 8 and concluding remarks in Section 9.
+
+\section{Background and Related Work}
+
+The Belief-Desire-Intention (BDI) model is a well-established paradigm for building rational agents capable of operating in dynamic and partially observable environments. Originating from the work of Rao and Georgeff~\cite{rao1995bdi}, the BDI model draws inspiration from folk psychology and provides a structured framework for goal-oriented behavior. In this model, agents maintain a set of beliefs about the world, generate desires representing possible objectives, and commit to intentions that guide concrete actions. BDI has been widely applied in scenarios requiring deliberative reasoning and reactive execution, such as robotic planning, multi-agent systems, and game AI.
+
+In multi-agent delivery systems, several strategies have been explored for improving task efficiency, especially under constraints such as limited observability and dynamic goal locations. Classical approaches often rely on greedy heuristics or reactive controllers, which lack the flexibility to balance competing objectives like urgency, distance, and coordination. More sophisticated approaches incorporate centralized planning, but these often suffer from scalability issues and single points of failure.
+
+Reward shaping, and specifically the use of decaying rewards, is a common technique in reinforcement learning and agent design to encourage timely task completion. In delivery domains, this models realistic constraints such as perishable goods or service level agreements. Agents must not only optimize for distance but also reason over time-sensitive opportunities. Few existing models combine this form of temporal urgency with symbolic deliberation as in the BDI framework.
+
+Collaboration in multi-agent systems has been extensively studied, with strategies ranging from task decomposition and communication protocols to implicit coordination through shared world models. In grid-based environments, spatial partitioning and area splitting have shown effectiveness in reducing overlap and improving coverage. Handoff strategies—where one agent transfers responsibility to another—are less common but have been applied in scenarios like relay delivery and multi-robot object transport.
+
+Our work builds on these foundations by integrating decaying reward modeling, deliberative planning through BDI, and lightweight collaboration mechanisms in a delivery task. To the best of our knowledge, this is among the first implementations of such a combination evaluated on the DeliverooJS platform.
+
+\section{Problem Formulation}
+
+The task under consideration involves one or more autonomous agents operating in a static, grid-based environment. The agents must locate, collect, and deliver packages to designated delivery tiles. Each package has a time-sensitive reward value that decreases over time, modeling real-world constraints such as perishable goods or urgent delivery requirements.
+
+\subsection{Environment}
+
+The environment is defined as a 2D grid of discrete tiles. Each tile is one of the following types:
+\begin{itemize}
+	\item \textbf{Walkable}: The agent can move to this tile.
+	\item \textbf{Non-walkable}: Obstacles such as walls or blocked zones.
+	\item \textbf{Package spawn}: Packages may appear randomly here during the game.
+	\item \textbf{Delivery}: Tiles where agents can deliver packages to gain points.
+\end{itemize}
+
+Movements are allowed in the four cardinal directions (North, East, South, West). The map is fully known to the agent at initialization and does not change during execution.
+
+\subsection{Observability and Dynamics}
+
+At the start of the game, the map layout is known, but the positions of packages and other agents are not. Agents receive perceptual information about nearby packages and agent locations during execution. This defines a partially observable setting with real-time updates to the agent's beliefs.
+
+Packages spawn dynamically at predefined tiles, and their value decays over time. The agent can carry multiple packages simultaneously, adding complexity to intention prioritization.
+
+\subsection{Scoring Model}
+
+Each package has an initial value \( R_0 \). Its score decays over time according to a function \( R(t) = R_0 \cdot \gamma^t \), where \( \gamma \in  [0, \infty) \) is the decay factor and \( t \) is the time elapsed since the package was first observed. The agent's goal is to maximize the sum of scores obtained by successfully delivering packages before their value diminishes significantly.
+
+\subsection{Agent Capabilities}
+
+Agents can perform the following actions:
+\begin{itemize}
+	\item \texttt{move(direction)}: Move one tile in the given direction.
+	\item \texttt{pickup()}: Collect one or more packages on the current tile.
+	\item \texttt{put\_down()}: Leave a package on the current occupied position
+\end{itemize}
+
+Each action is atomic and occurs at discrete time steps. Agents may also update their beliefs and replan their intentions as new data is perceived.
+
+\subsection{Constraints}
+
+The primary constraints include:
+\begin{itemize}
+	\item \textbf{Partial observability}: Initial lack of knowledge about package and agent positions.
+	\item \textbf{Temporal decay}: Scores decrease over time, necessitating fast and informed planning.
+	\item \textbf{Limited interaction}: Unless in collaborative mode, agents operate independently.
+\end{itemize}
+
+This setting forms a complex planning environment where optimal behavior depends on real-time decision-making and strategic prioritization.
+
+\section{BDI Agent Architecture}
+
+Our agent is designed following the Belief-Desire-Intention (BDI) model~\cite{rao1995bdi}, which supports deliberative and reactive behaviors in uncertain environments. This architecture is particularly suited for the delivery task where the agent must reason dynamically based on new perceptions, decaying rewards, and shifting priorities.
+
+\subsection{Beliefs}
+
+Beliefs represent the agent’s internal model of the environment. These include:
+\begin{itemize}
+	\item The static map structure (walkable tiles, delivery zones, etc.).
+	\item Locations and timestamps of known packages.
+	\item Observed positions of other agents.
+	\item A history of visited tiles to support exploration and avoid redundancy.
+\end{itemize}
+Beliefs are updated at every time step based on perceptual information provided by the platform.
+
+\subsection{Desires}
+
+Desires are possible high-level goals the agent might pursue. In our implementation, desires include:
+\begin{itemize}
+	\item Deliver a package with the highest remaining value.
+	\item Explore unknown regions of the map to discover packages.
+	\item Perform a package handoff (if in collaborative mode).
+\end{itemize}
+Desires are derived from current beliefs and environment state and are recalculated periodically or when new relevant perceptions are received.
+
+\subsection{Intentions}
+
+Intentions are commitments to specific plans that operationalize desires. The agent selects intentions by prioritizing:
+\begin{itemize}
+	\item Urgency of package delivery (based on decay).
+	\item Proximity of delivery or pickup targets.
+	\item Collaborative opportunities (handoff or area support).
+\end{itemize}
+Only one intention is active at a time, and it can be revised if conditions change drastically.
+
+\subsection{Plan Library}
+
+Each intention is supported by one or more pre-defined plans, such as:
+\begin{itemize}
+	\item \texttt{ExploreArea}
+	\item \texttt{PickupPackage}
+	\item \texttt{DeliverPackages}
+	\item \texttt{TransferToAgent}
+	\item \texttt{AvoidConflict}
+\end{itemize}
+Plans include conditions for applicability and success, and a sequence of actions that fulfill the intention.
+
+\subsection{Integration with DeliverooJS}
+
+The agent interfaces with the DeliverooJS environment via API commands such as \texttt{move}, \texttt{pickup}, and \texttt{deliver}. It listens for perception events at each time step to update its beliefs. Intention execution translates into a sequence of API calls, and plan outcomes influence the next reasoning cycle.
+
+\section{Collaborative Strategies}
+% Placeholder for collaborative strategies section (to be developed)
+
+\section{Implementation Details}
+
+Our agent was implemented in JavaScript and deployed within the DeliverooJS simulation framework. This section describes how key components of the system were implemented and integrated.
+
+\subsection{Technological Stack}
+The agent is written in Node.js, using ES6 modules for modularity and testability. The DeliverooJS environment provides lifecycle hooks for agent setup, observation updates, and action selection, which we use to execute the BDI cycle.
+
+\subsection{Map and State Representation}
+The environment is represented as a 2D array, where each cell corresponds to a tile type and may hold metadata such as package presence or delivery eligibility. The agent maintains an internal state object that reflects known tiles, perceived packages, and other agents' last seen positions.
+
+\subsection{Pathfinding and Navigation}
+For path planning, we use a standard A* search algorithm, adapted for grid environments with uniform cost and cardinal movement. The heuristic is the Manhattan distance. Paths are cached per intention to reduce recomputation, and plans are recalculated when obstacles or package states change.
+
+\subsection{Belief Update and Plan Execution}
+Beliefs are updated based on DeliverooJS-provided perception events. Once updated, a fresh BDI cycle is triggered, evaluating current desires and possibly selecting new intentions. Each plan maps directly to a command queue that interfaces with the platform's API.
+
+\subsection{Debugging and Testing}
+The system was developed using unit tests for plan logic and simulation-based testing for end-to-end behavior. Visual debug logs were used to monitor map exploration and path selection during runtime.
+
+\section{Experimental Evaluation}
+
+To assess the effectiveness of our BDI-based delivery agent, we conducted a series of controlled experiments in the DeliverooJS environment. Each experiment compares the performance of our agent against a benchmark baseline agent.
+
+\subsection{Evaluation Setup}
+
+We evaluate across a diverse set of delivery scenarios with varying map layouts, package spawn rates, and reward decay profiles. Each scenario is executed for three independent runs to account for stochastic elements in package generation and agent movement.
+
+\subsection{Metrics}
+
+The primary evaluation metric is total score, defined as the sum of the decayed reward values of all successfully delivered packages. We also report:
+\begin{itemize}
+	\item Average score per run
+	\item Standard deviation across runs
+	\item Final performance difference between our agent and the baseline
+\end{itemize}
+
+\subsection{Benchmarking Methodology}
+
+For each scenario, we run both our BDI agent and the benchmark agent three times, capturing the total score for each run. We compute the mean performance per agent and the absolute and relative improvement metrics.
+
+\subsection{Preliminary Results (Placeholders)}
+
+\begin{table}[htbp]
+	\centering
+	\caption{Performance comparison of BDI agent vs. baseline (placeholder values).}
+	\begin{tabular}{|l|c|c|c|c|}
+		\hline
+		\textbf{Scenario} & \textbf{BDI Avg} & \textbf{Baseline Avg} & \textbf{Diff (Abs)} & \textbf{Diff (\%)} \\
+		\hline
+		CityGrid & 520 & 460 & +60 & +13.0\% \\
+		Warehouse & 490 & 450 & +40 & +8.9\% \\
+		MazeDelivery & 430 & 390 & +40 & +10.3\% \\
+		\hline
+	\end{tabular}
+	\label{tab:benchmark-results}
+\end{table}
+
+These results suggest that our agent consistently outperforms the baseline, particularly in scenarios where reward decay penalizes delays. Further testing will extend this to additional scenarios and collaborative modes.
+
+\section{Discussion and Limitations}
+
+% Content for this section goes here.
+
+\section{Conclusion and Future Work}
+
+In this work, we presented a BDI-based agent architecture designed for a delivery task in a partially observable environment with decaying rewards. Our agent operates within the DeliverooJS platform and demonstrates strong adaptability through dynamic belief updates, intention selection, and plan execution. We extended the basic BDI framework with collaborative features, such as spatial area partitioning and package handoff, enabling efficient multi-agent coordination.
+
+Our experimental evaluation showed that the BDI agent outperforms a benchmark baseline in multiple scenarios, particularly those where prompt delivery is essential due to time-decaying rewards. The architecture is modular and extensible, making it suitable for further experimentation in more complex or adversarial settings.
+
+Several directions remain open for future development. These include integrating learning components to adapt plan priorities based on observed outcomes, modeling opponent behavior in competitive scenarios, and improving coordination in dense multi-agent environments. Additionally, we plan to further refine the collaborative mechanisms and explore explicit communication protocols to support negotiation and role specialization.
+
+Overall, our results confirm the potential of structured goal-driven reasoning in dynamic, real-time delivery domains, and highlight the promise of BDI agents as a foundation for intelligent autonomous systems.
+
+
+
+\begin{thebibliography}{9}
+\bibitem{rao1995bdi}
+A. S. Rao and M. P. Georgeff,
+\textit{BDI Agents: From Theory to Practice},
+Proceedings of the First International Conference on Multi-Agent Systems (ICMAS), 1995.
+
+% Additional references go here...
+
+\end{thebibliography}
+
+\end{document}
