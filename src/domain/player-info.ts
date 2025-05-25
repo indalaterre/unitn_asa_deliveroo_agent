@@ -5,13 +5,15 @@ import type { IdAware } from "@domain/models/id-aware";
  * Models the player information (id and position)
  */
 export class PlayerInfo {
+    private readonly instantiationTime: Date = new Date();
+
     constructor(
         public readonly id: IdAware,
         public readonly name: string,
         public position: Position,
     ) {}
 
-    public toPddlSting(): string {
-        return `(at ${this.position.toPddlString()})`;
+    get instantiatedAt(): number {
+        return this.instantiationTime.getTime();
     }
 }

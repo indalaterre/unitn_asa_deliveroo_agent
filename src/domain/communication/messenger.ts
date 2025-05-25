@@ -12,6 +12,7 @@ export enum MessageType {
     HANDOFF_REQUEST = "handoff_request", // Request to hand off parcels to another agent
     HANDOFF_RESPONSE = "handoff_response", // Response to a handoff request
     HANDOFF_CONFIRM = "handoff_confirm", // Confirmation that a handoff has occurred
+    EXPLORATION_SECTOR_ASSIGNMENT = "exploration_sector_assignment",
 }
 
 /**
@@ -21,7 +22,7 @@ export interface Message {
     type: MessageType;
     timestamp: number;
     senderId: string;
-    recipientId: string;
+    recipientIds: string[];
 }
 
 /**
@@ -31,6 +32,7 @@ export interface HelloMessage extends Message {
     type: MessageType.HELLO;
     position: Position;
     score: number;
+    instantiationTime: number;
 }
 
 /**
@@ -43,6 +45,11 @@ export interface AgentPositionUpdate extends Message {
         position: Position;
         score: number;
     }[];
+}
+
+export interface ExplorationSectorAssignment extends Message {
+    type: MessageType.EXPLORATION_SECTOR_ASSIGNMENT;
+    positions: Position[];
 }
 
 /**
@@ -99,7 +106,7 @@ export interface Messenger {
      * Replies to a hello message sending its own position
      * @param message
      */
-    replyHelloMessage(message: HelloMessage): Promise<void>;
+    replyHelloMessage(message: HelloMessage): Promise<void[]>;
 
     /**
      * Register a callback for receiving hello messages
@@ -111,7 +118,7 @@ export interface Messenger {
      * Share information about parcels with other agents
      * @param message Contains the array of parcels to share information about
      */
-    shoutParcelInfo(message: ParcelInfoMessage): Promise<void>;
+    sendParcelInfo(message: ParcelInfoMessage): Promise<any>;
 
     /**
      * Register a callback for receiving parcel info messages
@@ -123,7 +130,7 @@ export interface Messenger {
      * Share information about parcels with other agents
      * @param message Contains the array of parcels to share information about
      */
-    shoutAgentsInfo(message: AgentPositionUpdate): Promise<void>;
+    sendAgentsInfo(message: AgentPositionUpdate): Promise<any>;
 
     /**
      * Register a callback for receiving parcel info messages
@@ -132,11 +139,23 @@ export interface Messenger {
     onAgentsInfoReceived(callback: (agents: Agent[]) => void): void;
 
     /**
+     * Sends (from master agent) the assigned exploration sector with the set of positions to explore
+     * @param message
+     */
+    sendExplorationAssignment(message: ExplorationSectorAssignment): Promise<void[]>;
+
+    /**
+     * Registers a callback for receiving exploration assignments
+     * @param callback
+     */
+    onExplorationAssignmentReceived(callback: (assignment: Position[]) => void): void;
+
+    /**
      * Send a handoff request to another agent
      * @param request {@link HandoffRequest} Handoff request
      * @returns Request ID that can be used to track responses
      */
-    sendHandoffRequest(request: HandoffRequest): Promise<void>;
+    sendHandoffRequest(request: HandoffRequest): Promise<void[]>;
 
     /**
      * Register a callback for receiving handoff requests
@@ -156,5 +175,5 @@ export interface Messenger {
         initiatorId: string,
         recipientId: string,
         estimatedArrivalTime: number,
-    ): Promise<void>;
+    ): Promise<void[]>;
 }

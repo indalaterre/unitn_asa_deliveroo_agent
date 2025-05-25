@@ -2,82 +2,42 @@ name: deliveroojs
 
 services:
 
-  24c1_1-1:
-    image: it.unitn.deliveroojs
-    ports:
-      - "4001:4001"
-    restart: unless-stopped
-
-    environment:
-      - LEVEL=24c1_1-1
-      - PORT=4001
-
-  24c1_9:
+  25c1_1:
     image: it.unitn.deliveroojs
     ports:
       - "4003:4001"
     restart: unless-stopped
 
     environment:
-      - LEVEL=24c1_9
+      - LEVEL=levels/25c1_1
       - PORT=4001
 
-  challenge_22:
+  25c1_2:
     image: it.unitn.deliveroojs
     ports:
       - "4004:4001"
     restart: unless-stopped
 
     environment:
-      - LEVEL=challenge_22
+      - LEVEL=levels/25c1_2
       - PORT=4001
 
-  challenge_23:
+  25c1_3:
     image: it.unitn.deliveroojs
     ports:
       - "4005:4001"
     restart: unless-stopped
 
     environment:
-      - LEVEL=challenge_23
+      - LEVEL=levels/25c1_3
       - PORT=4001
 
-  challenge_32:
-    image: it.unitn.deliveroojs
-    ports:
-      - "4015:4001"
-    restart: unless-stopped
-
-    environment:
-      - LEVEL=challenge_32
-      - PORT=4001
-
-  level_3:
-    image: it.unitn.deliveroojs
-    ports:
-      - "4006:4001"
-    restart: unless-stopped
-
-    environment:
-      - LEVEL=level_3
-      - PORT=4001
-
-  default_map:
-    image: it.unitn.deliveroojs
-    ports:
-      - "4007:4001"
-    restart: unless-stopped
-
-    environment:
-      - LEVEL=default_map
-      - PORT=4001
-
-  handoff_1:
+  25c2_hallway:
     image: it.unitn.deliveroojs
     ports:
       - "4008:4001"
     restart: unless-stopped
 
     environment:
-      - LEVEL=levels/handoff_1
+      - LEVEL=levels/25c2_hallway
       - PORT=4001

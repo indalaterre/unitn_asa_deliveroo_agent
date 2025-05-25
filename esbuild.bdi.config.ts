@@ -2,7 +2,11 @@
 import { build } from "esbuild";
 
 build({
-    entryPoints: ["src/main-bdi.ts", "src/utils/matrix.ts"],
+    entryPoints: [
+        "src/main-bdi.ts",
+        "src/utils/matrix.ts",
+        "src/utils/clustering-worker.ts"
+    ],
     outdir: 'dist',
     bundle: true,
     platform: "node",

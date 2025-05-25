@@ -29,18 +29,6 @@ export interface CryptoConfiguration {
     publicPath: string;
 }
 
-export interface PddlConfiguration {
-    /**
-     * The host to the pddl server.
-     */
-    host: string;
-
-    /**
-     *
-     */
-    pass_path: string;
-}
-
 export interface AgentConfiguration {
     /**
      * The Deliveroo.js host
@@ -53,12 +41,12 @@ export interface AgentConfiguration {
     token: string;
 
     /**
-     * The total score the agent is allowed to carry at same time
+     * The total score the agent is allowed to carry at the same time
      */
     maxCarryingParcels: number;
 
     /**
-     * The radius of the area on which calculate the agent density of a tile
+     * The radius of the area on which calculates the agent density of a tile?
      */
     agentsDensityRadius: number;
 
@@ -66,11 +54,6 @@ export interface AgentConfiguration {
      * Stores the paths for the keys pair used to protect agents communication
      */
     cryptoKeyPaths: CryptoConfiguration;
-
-    /**
-     * Stores the host and pass path to query the pddl online server
-     */
-    pddlConfiguration: PddlConfiguration;
 }
 
 export class GameConfiguration {
