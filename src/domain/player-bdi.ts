@@ -252,44 +252,44 @@ export class PlayerBDI {
      * @returns Promise that resolves to true if the handoff was executed, false otherwise
      * @private
      */
-    private async executeHandoff(): Promise<boolean> {
-        const handoff: HandoffRequest = this._handoffCoordinator.getActiveHandoff();
-        if (!handoff) {
-            return false;
-        }
-
-        // Check if we're at the meeting position
-        const atMeetingPosition: boolean = this._beliefs.myPosition.equals(handoff.meetingPosition);
-
-        if (!atMeetingPosition) {
-            const nextPosition: Position = handoff.meetingPath.shift();
-            const nextDirection: Directions = this._beliefs.myPosition.getDirection(nextPosition);
-            // Move towards meeting position
-            const success = await this.actuator.move(nextDirection);
-            return false; // Not complete yet
-        }
-
-        // Check if this is an incoming or outgoing handoff
-        const isIncoming = handoff.receiverId === this.playerInfo.id.toString();
-
-        if (isIncoming) {
-            // We're receiving parcels
-            // Wait for the initiator to put down the parcels
-            return false; // Not complete yet
-        } else {
-            // We're giving parcels
-            // Put down the parcels
-            const success: Set<string> = await this.actuator.putDown(handoff.parcelIds);
-
-            if (success) {
-                // Complete the handoff
-                this._handoffCoordinator.completeHandoff(handoff.requestId, true);
-                return true;
-            } else {
-                // Handoff failed
-                this._handoffCoordinator.completeHandoff(handoff.requestId, false);
-                return false;
-            }
-        }
-    }
+    //private async executeHandoff(): Promise<boolean> {
+    //    const handoff: HandoffRequest = this._handoffCoordinator.getActiveHandoff();
+    //    if (!handoff) {
+    //        return false;
+    //    }
+//
+    //    // Check if we're at the meeting position
+    //    const atMeetingPosition: boolean = this._beliefs.myPosition.equals(handoff.meetingPosition);
+//
+    //    if (!atMeetingPosition) {
+    //        const nextPosition: Position = handoff.meetingPath.shift();
+    //        const nextDirection: Directions = this._beliefs.myPosition.getDirection(nextPosition);
+    //        // Move towards meeting position
+    //        const success = await this.actuator.move(nextDirection);
+    //        return false; // Not complete yet
+    //    }
+//
+    //    // Check if this is an incoming or outgoing handoff
+    //    const isIncoming = handoff.receiverId === this.playerInfo.id.toString();
+//
+    //    if (isIncoming) {
+    //        // We're receiving parcels
+    //        // Wait for the initiator to put down the parcels
+    //        return false; // Not complete yet
+    //    } else {
+    //        // We're giving parcels
+    //        // Put down the parcels
+    //        const success: Set<string> = await this.actuator.putDown(handoff.parcelIds);
+//
+    //        if (success) {
+    //            // Complete the handoff
+    //            this._handoffCoordinator.completeHandoff(handoff.requestId, true);
+    //            return true;
+    //        } else {
+    //            // Handoff failed
+    //            this._handoffCoordinator.completeHandoff(handoff.requestId, false);
+    //            return false;
+    //        }
+    //    }
+    //}
 }
