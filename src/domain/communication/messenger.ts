@@ -147,15 +147,13 @@ export interface Messenger {
 
     /**
      * 
-     * @param callback 
+     * @param handoffMessage 
      */
-    onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void;
+    sendHandoffResponseMessage(handoffMessage: HandoffResponse): Promise<void>;
 
     /**
      * 
-     * @param handoffMessage 
+     * @param callback 
      */
-    sendHandoffResponseMessage(
-        handoffMessage: HandoffResponse
-    ): Promise<void>;
+    onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void;
 }

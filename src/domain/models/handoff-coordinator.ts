@@ -1,9 +1,7 @@
 import type { BeliefContainer } from "@domain/beliefs";
 import type { Messenger } from "@domain/communication/messenger";
-import type { DesiresManager } from "@domain/desires";
 import { GameConfiguration } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import { Intention } from "@domain/models/intention";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -28,7 +26,6 @@ export interface HandoffRequest {
     receiverId: string;
     parcelIds: string[];
     meetingPosition: Position;
-    meetingPath?: Position[];
     urgency: number;
     timeToMeet: number;
     expiresAt: number;
@@ -59,8 +56,7 @@ export class HandoffCoordinator {
 
     constructor(
         private readonly messenger: Messenger,
-        private readonly beliefs: BeliefContainer,
-        private readonly desiresManager: DesiresManager,
+        private readonly beliefs: BeliefContainer
     ) {
         // Handle incoming handoff requests
         this.messenger.onHandoffRequestReceived(async (request: HandoffRequest) => {
@@ -74,7 +70,7 @@ export class HandoffCoordinator {
         this.messenger.onHandoffResponseReceived(async (response: HandoffResponse) => {
 
             await this.handleHandoffResponse(response);
-
+            console.log("handleHandoffResponse");
         });
 
         // Set up periodic cleanup of expired requests
@@ -97,9 +93,9 @@ export class HandoffCoordinator {
         }
 
         // Check if we already have an active handoff
-        if (this.activeHandoff) {
-            return false;
-        }
+        //if (this.activeHandoff) {
+        //    return false;
+        //}
 
         // Check if we can reach the meeting position
         if (this.beliefs.myPosition && request.meetingPosition) {
@@ -145,7 +141,6 @@ export class HandoffCoordinator {
         receiverId: string,
         parcelIds: string[],
         meetingPosition: Position,
-        meetingPath: Position[],
         urgency: number,
         timeToMeet: number,
         expiresIn = 30000, // Default to 30 seconds
@@ -159,7 +154,6 @@ export class HandoffCoordinator {
             receiverId,
             parcelIds,
             meetingPosition,
-            meetingPath,
             urgency,
             timeToMeet,
             expiresAt,
@@ -181,6 +175,8 @@ export class HandoffCoordinator {
     acceptIncomingRequest(requestId: string, estimatedArrivalTime: number): HandoffRequest | null {
         const request = this.incomingRequests.get(requestId);
         if (!request) return null;
+
+        console.log(`acceptIncomingRequest: ${request.meetingPosition} ${Date.now()}`)
 
         request.status = HandoffStatus.ACCEPTED;
         request.estimatedArrivalTime = estimatedArrivalTime;
@@ -221,6 +217,8 @@ export class HandoffCoordinator {
         this.outgoingRequests.delete(requestId);
         this.incomingRequests.delete(requestId);
         this.activeHandoff = null;
+
+        console.log("completeHandoff")
 
         return request;
     }
@@ -295,12 +293,6 @@ export class HandoffCoordinator {
                 // Accept the request
                 this.acceptIncomingRequest(request.requestId, estimatedArrivalTime);
 
-
-                this.desiresManager.generatePickupHandoffDesire(
-                    request.requestId,
-                    request.meetingPosition,
-                );
-
                 // Send acceptance response
                 await this.messenger.sendHandoffResponseMessage(
                     {
@@ -311,16 +303,6 @@ export class HandoffCoordinator {
                         estimatedArrivalTime: estimatedArrivalTime
                     } as HandoffResponse
                 );
-
-                // Create a move intention to the meeting position
-                //const intention: Intention = Intention.move(request.meetingPosition);
-                //intention.context = {
-                //    handoffRequestId: request.requestId,
-                //    isHandoff: true,
-                //    isReceiver: true, // Flag that we're receiving parcels
-                //    initiatorId: request.initiatorId,
-                //    parcelIds: request.parcelIds,
-                //};
 
             } else {
                 // Reject the request
@@ -351,18 +333,15 @@ export class HandoffCoordinator {
             case HandoffStatus.ACCEPTED:
                 
                 if (this.outgoingRequests.has(response.requestId)) {
-                    this.desiresManager.generatePutDownHandoffDesire(
-                        response.requestId,
-                        this.outgoingRequests.get(response.requestId).meetingPosition,
-                    );
-
                     this.activeHandoff = this.outgoingRequests.get(response.requestId)
                 }
+
+                break;
 
             case HandoffStatus.REJECTED:
 
                 // TODO: do something
-                this.completeHandoff(response.requestId, false);
+                //this.completeHandoff(response.requestId, false);
 
                 break;
 

@@ -75,15 +75,14 @@ export class PlayerBDI {
         // Initialize belief system
         this._beliefs = new BeliefContainer(playerInfo, matchMap);
 
-        // Initialize desires manager
-        this._desiresManager = new DesiresManager(this._beliefs);
-
         // Initialize handoff coordinator
         this._handoffCoordinator = new HandoffCoordinator(
             this.messenger,
-            this._beliefs,
-            this._desiresManager,
+            this._beliefs
         );
+
+        // Initialize desires manager
+        this._desiresManager = new DesiresManager(this._beliefs, this._handoffCoordinator);
 
         // Initialize intention manager
         this._intentionManager = new IntentionManager(
@@ -232,9 +231,9 @@ export class PlayerBDI {
         while (this._isAlive) {
             await new Promise((resolve) => setImmediate(resolve));
 
-            if (this.playerInfo.name === "Amico2") {
-                continue;
-            }
+            //if (this.playerInfo.name === "Amico2") {
+            //    continue;
+            //}
 
             // Synchronize beliefs
             this._beliefs.synchronizeKnownAgents();
@@ -242,16 +241,6 @@ export class PlayerBDI {
 
             // Generate desires based on current beliefs
             this._desiresManager.generateDesires();
-
-            // Check if we need to execute a handoff
-            if (this._handoffCoordinator.hasActiveHandoff()) {
-                const handoffExecuted = await this.executeHandoff();
-                if (handoffExecuted) {
-                    // Reset current intention after handoff
-                    this._intentionManager.resetCurrentIntention();
-                    continue;
-                }
-            }
 
             // Process intentions
             await this._intentionManager.processIntentions();

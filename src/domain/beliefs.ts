@@ -771,6 +771,11 @@ export class BeliefContainer {
 
         // Find the best delivery point for our parcels
         const bestDelivery: PositionWithDistance = this.findBestDelivery();
+
+        if (bestDelivery.distance < this.findBestDelivery(agentPosition).distance) {
+            return -1;
+        }
+
         const myPathToAgent: Position[][] = this.map.calculateMidPointPaths(
             this.myPosition,
             agentPosition,
@@ -799,7 +804,7 @@ export class BeliefContainer {
 
         //We consider as meeting position the final destination of the agent path to at the middle of the path
         const myDistanceToMeeting: number = myPathToDelivery[0].length;
-        const friendDistanceToMeeting: number = myDistanceToMeeting[1].length;
+        const friendDistanceToMeeting: number = myPathToDelivery[1].length;
 
         //We now calculate the benefit of a handoff operation
         /*
@@ -814,7 +819,7 @@ export class BeliefContainer {
 
          */
         const timeSavings: number =
-            myDistanceToMeeting - (myDistanceToMeeting + friendDistanceToMeeting);
+            myDistanceToMeeting + friendDistanceToMeeting;
 
         const totalParcelValue: number = this.carriedParcels.reduce(
             (sum: number, parcel: Parcel) => sum + parcel.currentScore,
@@ -822,7 +827,7 @@ export class BeliefContainer {
         );
 
         // We increase the priority of the handoff if parcels are closer to expiration (their score is low)
-        return timeSavings - Math.floor(totalParcelValue / 10);
+        return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
     }
 
     //////// AGENT
@@ -952,6 +957,33 @@ export class BeliefContainer {
      */
     isTrustedAgent(agentId: string): boolean {
         return this._trustedAgentIds.has(agentId);
+    }
+
+    partnerAdjacentTile(partnerId: string): Position | null {
+
+        if (this.isTrustedAgent(partnerId)) {
+
+            const partner = this.agents.get(partnerId);
+            const partnerPosition = this.positionByAgent.get(partner);
+
+            const adjacentTiles = this.myPosition.adjacent;
+
+            let partnerFound = false;
+            for (const adjacentTile of adjacentTiles) {
+
+                if (adjacentTile.equals(partnerPosition)) {
+                    partnerFound = true;
+                    break;
+                }
+
+            }
+
+            if (partnerFound) {
+                return partnerPosition;
+            }
+        }
+
+        return null;
     }
 
     private calculateTileExplorationFactor(tile: Tile) {

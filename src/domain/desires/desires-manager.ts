@@ -5,6 +5,7 @@ import { EventEmitter } from "eventemitter3";
 import type { BeliefContainer } from "../beliefs";
 import type { Position } from "../models/environment";
 import { Desire, DesirePriorities, DesireTypes } from "./desire";
+import { HandoffCoordinator } from "@domain/models/handoff-coordinator";
 
 /**
  * Manages the agent's desires
@@ -33,13 +34,23 @@ export class DesiresManager {
      * Creates a new desires manager
      * @param beliefs The agent's beliefs
      */
-    constructor(private readonly beliefs: BeliefContainer) {}
+    constructor(
+        private readonly beliefs: BeliefContainer,
+        private readonly handoffCordinator: HandoffCoordinator
+    ) {}
 
     /**
      * Generates desires based on the current beliefs
      */
     generateDesires(): void {
         // Clear current desires
+        //this._activeDesires = this._activeDesires.filter(desire => {
+        //    if (desire.type === DesireTypes.PICKUP_HANDOFF && desire.context?.timeToMeet > Date.now()) {
+        //        return true;
+        //    }
+//
+        //    return false;
+        //});
         this._activeDesires = [];
 
         // Generate desires based on current state
@@ -81,28 +92,9 @@ export class DesiresManager {
             const potentialHandoffPartner = this.evaluatePotentialHandoffPartners();
 
             if (potentialHandoffPartner) {
-                // Create a DELIVER desire with handoff context
+                // Create a PutDownHandoff desire with handoff context
                 const { agentId, meetingPosition, benefit } = potentialHandoffPartner;
-
-                // Create context with both parcel IDs and handoff information
-                const context = {
-                    parcelIds: this.beliefs.carryingParcelIds,
-                    handoff: {
-                        partnerId: agentId,
-                        meetingPosition: meetingPosition,
-                        benefit: benefit,
-                    },
-                };
-
-                // Create the desire with the combined context
-                const deliverDesire: Desire = new Desire(
-                    DesireTypes.DELIVER_PARCEL,
-                    Math.min(85, 60 + Math.floor(benefit / 5)), // Priority based on benefit
-                    deliveryPoint.position,
-                    context,
-                );
-
-                this._activeDesires.push(deliverDesire);
+                this.generatePutDownHandoffDesire(agentId, this.beliefs.carryingParcelIds, meetingPosition, benefit);
             } else {
                 // Standard delivery desire without handoff
                 const deliverDesire: Desire = Desire.deliverParcel(
@@ -170,6 +162,20 @@ export class DesiresManager {
      * @private
      */
     private generatePickupDesires(): void {
+
+        if (this.handoffCordinator.hasActiveHandoff()) {
+            const activeHandoff = this.handoffCordinator.getActiveHandoff();
+            if (activeHandoff.receiverId === this.beliefs.myId) {
+                this.generatePickupHandoffDesire(
+                    activeHandoff.requestId,
+                    activeHandoff.initiatorId,
+                    activeHandoff.parcelIds,
+                    activeHandoff.meetingPosition,
+                    activeHandoff.timeToMeet,
+                );
+            }
+        }
+
         // Find the best parcel to pick up
         if (this.beliefs.isCarrying) {
             //We need to evaluate additional opportunistic pickups
@@ -291,51 +297,29 @@ export class DesiresManager {
         this._eventEmitter.emit("desire:failed", desire);
     }
 
-    generatePickupHandoffDesire(requestId: string, meetingPosition: Position): void {
-
-        //Checking if exploration is possible
-        const meetingPath: Position[] = this.beliefs.calculateMovingPath(
-            meetingPosition,
-            this.beliefs.getOccupiedPositions(),
+    generatePickupHandoffDesire(requestId: string, partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number=0): void {
+        // Create pickup handoff desire with the highest priority
+        const pickUpHandoffDesire: Desire = Desire.pickupHandoff(
+            DesirePriorities.HANDOFF_PRIORITY,
+            requestId,
+            partnerId,
+            parcelIds,
+            meetingPosition
         );
-        if (meetingPath?.length) {
-            // Create pickup handoff desire with the highest priority
-            const exploreDesire: Desire = Desire.pickupHandoff(
-                requestId,
-                DesirePriorities.HANDOFF_PRIORITY,
-                meetingPosition,
-            );
 
-            this._activeDesires.push(exploreDesire);
-        } else {
-            // TODO: do something
-            throw "generatePickupHandoffDesire: No path found"
-        }
-
+        this._activeDesires.push(pickUpHandoffDesire);
     }
 
-    generatePutDownHandoffDesire(requestId: string, meetingPosition: Position): void {
-
-        //Checking if exploration is possible
-        const meetingPath: Position[] = this.beliefs.calculateMovingPath(
-            meetingPosition,
-            this.beliefs.getOccupiedPositions(),
+    generatePutDownHandoffDesire(partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number=0): void {
+        // Create pickup handoff desire with the highest priority
+        const putDownHandoffDesire: Desire = Desire.putDownHandoff(
+            DesirePriorities.HANDOFF_PRIORITY,
+            partnerId,
+            parcelIds,
+            meetingPosition
         );
-        if (meetingPath?.length) {
-            // Create pickup handoff desire with the highest priority
-            const exploreDesire: Desire = Desire.putDownHandoff(
-                requestId,
-                DesirePriorities.HANDOFF_PRIORITY,
-                meetingPosition,
-            );
 
-            this._activeDesires.push(exploreDesire);
-        } else {
-            // TODO: do something
-
-            throw "generatePutDownHandoffDesire: No path found"
-        }
-
+        this._activeDesires.push(putDownHandoffDesire);
     }
 
     /**

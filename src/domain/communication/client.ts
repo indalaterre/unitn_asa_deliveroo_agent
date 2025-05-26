@@ -14,6 +14,7 @@ import { DecayingValue } from "@domain/models/decaying-value";
 import type { HandoffRequest, HandoffResponse } from "@domain/models/handoff-coordinator";
 import { IdAware } from "@domain/models/id-aware";
 import { PlayerInfo } from "@domain/player-info";
+import { MessageType } from "./messenger";
 import type {
     AgentPositionUpdate,
     HandoffResponseMessage,
@@ -58,6 +59,11 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onHandoffRequestReceived(callback: (request: HandoffRequest) => void): void {
         this.onMessageReceived((message: HandoffRequestMessage) => {
+
+            if (message.type != MessageType.HANDOFF_REQUEST) {
+                return;
+            }
+
             const parsedRequest: HandoffRequest = {
                 requestId: message.requestId,
                 initiatorId: message.senderId,
@@ -85,6 +91,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
             handoffResponse.status,
             handoffResponse.estimatedArrivalTime,
         );
+
         return this.sendMessage(message);
     }
 
@@ -94,6 +101,11 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
      */
     onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void {
         this.onMessageReceived((message: HandoffResponseMessage) => {
+
+            if (message.type != MessageType.HANDOFF_RESPONSE) {
+                return;
+            }
+
             const parsedResponse: HandoffResponse = {
                 requestId: message.requestId,
                 initiatorId: message.senderId,
@@ -344,6 +356,11 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onHelloMessageReceived(callback: (agent: Agent) => void): void {
         this.onMessageReceived((message: HelloMessage) => {
+
+            if (message.type != MessageType.HELLO) {
+                return;
+            }
+
             const agentPosition = new Position(message.position.row, message.position.column);
             const agent = new Agent(message.senderId, agentPosition, message.score);
 
@@ -357,6 +374,11 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onParcelInfoReceived(callback: (parcels: Parcel[]) => void): void {
         this.onMessageReceived((message: ParcelInfoMessage) => {
+
+            if (message.type != MessageType.PARCEL_INFO) {
+                return;
+            }
+
             const parsedParcels: Parcel[] = message.parcels.map((parcel) => {
                 return new Parcel(
                     parcel.id,
@@ -376,6 +398,11 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onAgentsInfoReceived(callback: (agents: Agent[]) => void): void {
         this.onMessageReceived((message: AgentPositionUpdate) => {
+
+            if (message.type != MessageType.AGENT_UPDATE) {
+                return;
+            }
+
             const parsedAgents: Agent[] = message.agents.map((agent) => {
                 const agentPosition = new Position(agent.position.row, agent.position.column);
                 return new Agent(agent.agentId, agentPosition, agent.score);

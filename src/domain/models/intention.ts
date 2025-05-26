@@ -78,6 +78,22 @@ export class Intention extends AbstractHashable implements Hashable {
     }
 
     /**
+     * Generates a PICK_UP intention for the position
+     * @param position
+     */
+    static pickUpHandoff(position: Position): Intention {
+        return new Intention(IntentionTypes.PICK_UP_HANDOFF, position);
+    }
+
+    /**
+     * Generates a PUT_DOWN intention for the position
+     * @param position
+     */
+    static putDownHandoff(position: Position): Intention {
+        return new Intention(IntentionTypes.PUT_DOWN_HANDOFF, position);
+    }
+
+    /**
      * Equals method
      * @param other
      */
