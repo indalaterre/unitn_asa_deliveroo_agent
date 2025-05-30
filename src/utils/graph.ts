@@ -45,9 +45,10 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
         graph.clearPathCache();
 
         //Creating the graph nodes with tile positions
-        tiles
-            .filter((tile: Tile) => tile.walkable)
-            .forEach((tile: Tile) => graph.addNode(tile.position.hashCode(), tile));
+        const walkableTiles: Tile[] = tiles.filter((tile: Tile) => tile.walkable);
+        for (const walkableTile of walkableTiles) {
+            graph.addNode(walkableTile.position.hashCode(), walkableTile);
+        }
 
         //Creating connection between each adjacent node
         graph.forEachNode((tileHash: string, tile: Tile) => {
@@ -145,7 +146,7 @@ export class Graph extends UndirectedGraph<Tile, Edge> {
     public verifyBidirectionalEdges(): void {
         const edgesToAdd: [string, string, Edge][] = [];
 
-        this.forEachEdge((edge: string, attributes: Edge, source: string, target: string) => {
+        this.forEachEdge((_, attributes: Edge, source: string, target: string) => {
             // Check if the reverse edge exists with the same attributes
             if (!this.hasEdge(target, source)) {
                 edgesToAdd.push([target, source, attributes]);

@@ -119,7 +119,7 @@ export class DesiresManager {
         benefit: number;
     } | null {
         // Find potential handoff partners
-        const agents: Agent[] = this.beliefs.getTrustedAgents();
+        const agents: Agent[] = this.beliefs.trustedAgents;
         let bestPartner = null;
         let maxBenefit = 0;
 
@@ -166,6 +166,7 @@ export class DesiresManager {
         if (this.handoffCordinator.hasActiveHandoff()) {
             const activeHandoff = this.handoffCordinator.getActiveHandoff();
             if (activeHandoff.receiverId === this.beliefs.myId) {
+                console.log("PORCO generatePickupDesires generatePickupHandoffDesire")
                 this.generatePickupHandoffDesire(
                     activeHandoff.requestId,
                     activeHandoff.initiatorId,
@@ -308,6 +309,8 @@ export class DesiresManager {
         );
 
         this._activeDesires.push(pickUpHandoffDesire);
+
+        console.log(`generatePickupHandoffDesire`);
     }
 
     generatePutDownHandoffDesire(partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number=0): void {
@@ -320,6 +323,8 @@ export class DesiresManager {
         );
 
         this._activeDesires.push(putDownHandoffDesire);
+
+        console.log(`generatePutDownHandoffDesire`);
     }
 
     /**

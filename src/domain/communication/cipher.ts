@@ -1,10 +1,10 @@
 import {
     constants,
+    createCipheriv,
+    createDecipheriv,
     privateDecrypt,
     publicEncrypt,
     randomBytes,
-    createCipheriv,
-    createDecipheriv,
 } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -24,7 +24,7 @@ export class Cipher {
     encrypt(message: string): string {
         // 1. Generate a random AES key and IV
         const aesKey = randomBytes(32); // 256-bit key
-        const iv = randomBytes(16);     // 128-bit IV
+        const iv = randomBytes(16); // 128-bit IV
 
         // 2. Encrypt the message using AES
         const cipher = createCipheriv("aes-256-cbc", aesKey, iv);
@@ -37,7 +37,7 @@ export class Cipher {
                 key: this.publicKey,
                 padding: constants.RSA_PKCS1_OAEP_PADDING,
             },
-            aesKey
+            aesKey,
         ).toString("base64");
 
         // 4. Package encrypted AES key, IV, and encrypted message into a single base64 string
@@ -62,7 +62,7 @@ export class Cipher {
                     key: this.privateKey,
                     padding: constants.RSA_PKCS1_OAEP_PADDING,
                 },
-                Buffer.from(key, "base64")
+                Buffer.from(key, "base64"),
             );
 
             // 3. Decrypt the message using the decrypted AES key and IV

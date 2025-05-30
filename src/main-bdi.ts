@@ -3,17 +3,16 @@ import commandLineArgs, { type CommandLineOptions } from "command-line-args";
 import * as dotenv from "dotenv";
 
 import type { Actuator } from "@domain/communication";
+import { SocketClient } from "@domain/communication/client";
+import type { Messenger } from "@domain/communication/messenger";
+import type { Sensor } from "@domain/communication/sensor";
+import { MatchMap } from "@domain/map";
 import {
     type AgentConfiguration,
     type CryptoConfiguration,
     GameConfiguration,
-    type PddlConfiguration,
 } from "@domain/models";
-import { SocketClient } from "./domain/communication/client";
-import type { Messenger } from "./domain/communication/messenger";
-import type { Sensor } from "./domain/communication/sensor";
-import { MatchMap } from "./domain/map";
-import { PlayerBDI } from "./domain/player-bdi";
+import { PlayerBDI } from "@domain/player-bdi";
 
 function getConfiguration(): AgentConfiguration {
     const options = [
@@ -25,9 +24,6 @@ function getConfiguration(): AgentConfiguration {
         { name: "max-last-heard", type: Number },
         { name: "start-iterations", type: Number },
         { name: "num-promising-positions", type: Number },
-        { name: "use-pddl", type: Boolean },
-        { name: "pddl-host", type: String },
-        { name: "pddl-paas-path", type: String },
         { name: "agent-name", type: String },
         { name: "agents-density-radius", type: Number },
         { name: "max-carrying-parcels", type: Number },
@@ -40,7 +36,6 @@ function getConfiguration(): AgentConfiguration {
     defaultValues.set("num-promising-positions", 5);
     defaultValues.set("gaussian-std", 1.0);
     defaultValues.set("discount-factor", 0.0);
-    defaultValues.set("use-pddl", false);
     defaultValues.set("agent-name", "");
     defaultValues.set("agents-density-radius", 4);
     defaultValues.set("max-carrying-parcels", 6);
@@ -83,10 +78,6 @@ function getConfiguration(): AgentConfiguration {
             publicPath: config.get("public-key") as string,
             privatePath: config.get("private-key") as string,
         } as CryptoConfiguration,
-        pddlConfiguration: {
-            host: config.get("pddl-host") as string,
-            pass_path: config.get("pddl-paas-path") as string,
-        } as PddlConfiguration,
         maxCarryingParcels: config.get("max-carrying-parcels") as number,
         agentsDensityRadius: config.get("agents-density-radius") as number,
     } as AgentConfiguration;
@@ -103,11 +94,10 @@ async function main(): Promise<void> {
         gameConfiguration.cryptoKeyPaths,
     );
 
-    const [playerInfo, freeTiles, envConfig, initialParcels] = await Promise.all([
+    const [playerInfo, freeTiles, envConfig] = await Promise.all([
         client.getPlayerInfo(),
         client.getFreeTiles(),
         client.loadConfiguration(),
-        client.detectParcels(),
     ]);
 
     GameConfiguration.init(gameConfiguration, envConfig);

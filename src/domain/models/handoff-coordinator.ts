@@ -36,7 +36,7 @@ export interface HandoffRequest {
 export interface HandoffResponse {
     requestId: string;
     initiatorId: string;
-    receiverId: string;
+    recipientIds: string[];
     status: HandoffStatus;
     estimatedArrivalTime: number;
 }
@@ -70,11 +70,24 @@ export class HandoffCoordinator {
         this.messenger.onHandoffResponseReceived(async (response: HandoffResponse) => {
 
             await this.handleHandoffResponse(response);
-            console.log("handleHandoffResponse");
         });
 
         // Set up periodic cleanup of expired requests
         setInterval(() => this.cleanupExpiredRequests(), 5000); // Check every 5 seconds
+    }
+
+    public get hasPendingRequests() {
+        this.outgoingRequests = new Map(
+            Array.from(this.outgoingRequests).filter(([key, value]) => {
+                return value.expiresAt > Date.now()
+            })
+        )
+
+        const result = Array.from(this.outgoingRequests).filter(([key, value]) => {
+                return value.status == HandoffStatus.PENDING
+            }).length > 0;
+
+        return result;
     }
 
     /**
@@ -176,8 +189,6 @@ export class HandoffCoordinator {
         const request = this.incomingRequests.get(requestId);
         if (!request) return null;
 
-        console.log(`acceptIncomingRequest: ${request.meetingPosition} ${Date.now()}`)
-
         request.status = HandoffStatus.ACCEPTED;
         request.estimatedArrivalTime = estimatedArrivalTime;
         this.activeHandoff = request;
@@ -218,8 +229,6 @@ export class HandoffCoordinator {
         this.incomingRequests.delete(requestId);
         this.activeHandoff = null;
 
-        console.log("completeHandoff")
-
         return request;
     }
 
@@ -236,6 +245,9 @@ export class HandoffCoordinator {
      * @returns True if there is an active handoff
      */
     hasActiveHandoff(): boolean {
+        //if (this.activeHandoff?.expiresAt < Date.now()) {
+        //    this.activeHandoff = null;
+        //}
         return this.activeHandoff !== null;
     }
 
@@ -298,7 +310,7 @@ export class HandoffCoordinator {
                     {
                         requestId: request.requestId,
                         initiatorId: this.beliefs.myId,
-                        receiverId: request.initiatorId,
+                        recipientIds: [request.initiatorId],
                         status: HandoffStatus.ACCEPTED,
                         estimatedArrivalTime: estimatedArrivalTime
                     } as HandoffResponse
@@ -312,6 +324,8 @@ export class HandoffCoordinator {
                 await this.messenger.sendHandoffResponseMessage(
                     {
                         requestId: request.requestId,
+                        initiatorId: this.beliefs.myId,
+                        recipientIds: [request.initiatorId],
                         status: HandoffStatus.REJECTED,
                         estimatedArrivalTime: null
                     } as HandoffResponse
@@ -333,6 +347,7 @@ export class HandoffCoordinator {
             case HandoffStatus.ACCEPTED:
                 
                 if (this.outgoingRequests.has(response.requestId)) {
+                    this.outgoingRequests.get(response.requestId).status = HandoffStatus.IN_PROGRESS;
                     this.activeHandoff = this.outgoingRequests.get(response.requestId)
                 }
 
@@ -342,6 +357,9 @@ export class HandoffCoordinator {
 
                 // TODO: do something
                 //this.completeHandoff(response.requestId, false);
+                if (this.outgoingRequests.has(response.requestId)){
+                    this.outgoingRequests.delete(response.requestId);
+                }
 
                 break;
 
@@ -349,5 +367,44 @@ export class HandoffCoordinator {
                 console.log(`handleHandoffResponse not valid response status: ${response.status}`);
         }
 
+    }
+
+    /**
+     * Sends a handoff response message to the initiator
+     * @param request The handoff request
+     * @param accepted Whether the request is accepted
+     * @param estimatedArrivalTime When the agent expects to arrive (if accepted)
+     */
+    /**
+     * Sends a handoff confirmation message to the partner agent
+     * @param handoff The handoff request that was completed
+     * @param success Whether the handoff was successful
+     */
+    public async sendHandoffConfirmation(
+        handoff: HandoffRequest,
+        success: boolean,
+    ): Promise<void> {
+        try {
+            // Determine the recipient (the other agent in the handoff)
+            const recipientId =
+                this.beliefs.myId === handoff.initiatorId
+                    ? handoff.receiverId
+                    : handoff.initiatorId;
+
+            // Send the handoff confirmation
+            //await this.messenger.sendHandoffConfirm(
+            //    recipientId,
+            //    handoff.requestId,
+            //    handoff.parcelIds,
+            //    success,
+            //    this.beliefs.myPosition,
+            //);
+
+            console.log(
+                `Sent handoff ${success ? "success" : "failure"} confirmation for request ${handoff.requestId}`,
+            );
+        } catch (error) {
+            console.error("Error sending handoff confirmation:", error);
+        }
     }
 }

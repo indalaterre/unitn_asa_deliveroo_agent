@@ -3,6 +3,7 @@ import type { Position } from "@domain/models/environment";
 import type { HandoffStatus } from "@domain/models/handoff-coordinator";
 import {
     type AgentPositionUpdate,
+    type ExplorationSectorAssignment,
     type HandoffResponseMessage,
     type HandoffRequestMessage,
     type HelloMessage,
@@ -19,18 +20,18 @@ export class MessageFactory {
      * Create a base message with common fields
      * @param type Message type
      * @param senderId ID of the sending agent
-     * @param recipientId Optional ID of the recipient agent
+     * @param recipientIds Optional ID of the recipient agent
      * @returns Base message object
      */
     private static createBaseMessage(
         type: MessageType,
         senderId: string,
-        recipientId?: string,
+        recipientIds?: string[],
     ): Message {
         return {
             type,
             senderId,
-            recipientId,
+            recipientIds,
             timestamp: Date.now(),
         };
     }
@@ -41,31 +42,36 @@ export class MessageFactory {
      * @param position Current position of the agent
      * @param score Current score of the agent
      * @param recipientId Optional ID of the recipient agent
+     * @param instantiationTime the time the agent has been instantiated
      * @returns HelloMessage object
      */
     public static createHelloMessage(
         senderId: string,
         position: Position,
         score: number,
+        instantiationTime: number,
         recipientId?: string,
     ): HelloMessage {
         return {
-            ...this.createBaseMessage(MessageType.HELLO, senderId, recipientId),
+            ...this.createBaseMessage(MessageType.HELLO, senderId, [recipientId]),
             type: MessageType.HELLO,
             senderId,
             position,
             score,
+            instantiationTime,
         };
     }
 
     /**
      * Create a Parcel Info message
      * @param senderId ID of the sending agent
-     * @param agents Array of agents information to share
+     * @param recipientIds Array of recipient agent ids
+     * @param agents Array of agent information to share
      * @returns ParcelInfoMessage object
      */
     public static createAgentsUpdateMessage(
         senderId: string,
+        recipientIds: string[],
         agents: Agent[],
     ): AgentPositionUpdate {
         const messageAgents = agents.map((agent: Agent) => {
@@ -76,7 +82,7 @@ export class MessageFactory {
             };
         });
         return {
-            ...this.createBaseMessage(MessageType.AGENT_UPDATE, senderId),
+            ...this.createBaseMessage(MessageType.AGENT_UPDATE, senderId, recipientIds),
             agents: messageAgents,
             type: MessageType.AGENT_UPDATE,
         };
@@ -85,10 +91,15 @@ export class MessageFactory {
     /**
      * Create a Parcel Info message
      * @param senderId ID of the sending agent
+     * @param recipientIds Array of recipient agent ids
      * @param parcels Array of parcel information to share
      * @returns ParcelInfoMessage object
      */
-    public static createParcelInfoMessage(senderId: string, parcels: Parcel[]): ParcelInfoMessage {
+    public static createParcelInfoMessage(
+        senderId: string,
+        recipientIds: string[],
+        parcels: Parcel[],
+    ): ParcelInfoMessage {
         const messageParcels = parcels.map((parcel: Parcel) => {
             return {
                 id: parcel.id,
@@ -99,9 +110,30 @@ export class MessageFactory {
         });
 
         return {
-            ...this.createBaseMessage(MessageType.PARCEL_INFO, senderId),
+            ...this.createBaseMessage(MessageType.PARCEL_INFO, senderId, recipientIds),
             type: MessageType.PARCEL_INFO,
             parcels: messageParcels,
+        };
+    }
+
+    /**
+     * Create an ExplorationAssignment message
+     * @param senderId the master agent id
+     * @param recipientId the agent recipient for the assignment
+     * @param positionsToExplore the list of positions assigned
+     * @returns ParcelInfoMessage object
+     */
+    public static createExplorationAssignmentMessage(
+        senderId: string,
+        recipientId: string,
+        positionsToExplore: Position[],
+    ): ExplorationSectorAssignment {
+        return {
+            ...this.createBaseMessage(MessageType.EXPLORATION_SECTOR_ASSIGNMENT, senderId, [
+                recipientId,
+            ]),
+            type: MessageType.EXPLORATION_SECTOR_ASSIGNMENT,
+            positions: positionsToExplore,
         };
     }
 
@@ -128,7 +160,7 @@ export class MessageFactory {
         estimatedArrivalTime?: number,
     ): HandoffRequestMessage {
         return {
-            ...this.createBaseMessage(MessageType.HANDOFF_REQUEST, initiatorId, receiverId),
+            ...this.createBaseMessage(MessageType.HANDOFF_REQUEST, initiatorId, [receiverId]),
             type: MessageType.HANDOFF_REQUEST,
             requestId,
             parcelIds,
@@ -152,12 +184,12 @@ export class MessageFactory {
     public static createHandoffResponseMessage(
         requestId: string,
         initiatorId: string,
-        receiverId: string,
+        recipientIds: string[],
         status: HandoffStatus,
         estimatedArrivalTime: number,
     ): HandoffResponseMessage {
         return {
-            ...this.createBaseMessage(MessageType.HANDOFF_RESPONSE, initiatorId, receiverId),
+            ...this.createBaseMessage(MessageType.HANDOFF_RESPONSE, initiatorId, recipientIds),
             type: MessageType.HANDOFF_RESPONSE,
             status,
             requestId,

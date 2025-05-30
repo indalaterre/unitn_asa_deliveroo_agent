@@ -6,6 +6,7 @@ import { DeliveryPointManager } from "@domain/models/delivery-point-manager";
 import type { Position, Tile } from "@domain/models/environment";
 import { type Intention, IntentionTypes } from "@domain/models/intention";
 import type { PlayerInfo } from "@domain/player-info";
+import type { ClusteredTiles } from "@utils/clustering-worker";
 import { extractFirstElementsInSortedArray } from "@utils/functions";
 import { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
@@ -14,10 +15,10 @@ import EventEmitter from "eventemitter3";
 
 export class BeliefContainer {
     /**
-     * The id of the current agent
+     * TRUE if this current agent is the master one
      * @private
      */
-    private readonly _ownId: string;
+    private _masterAgent = false;
 
     /**
      * Set of trusted agent IDs
@@ -60,12 +61,18 @@ export class BeliefContainer {
     private _notWorthParcels: HashSet<Parcel> = new HashSet();
 
     /**
-     * A map containing how much time a tile have been visited
+     * The assigned exploration sector
+     * @private
+     */
+    private _assignedExplorationSector: Position[] = [];
+
+    /**
+     * A map containing how much time a tile has been visited
      */
     private visitedTiles: HashMap<Position, number> = new HashMap();
 
     /**
-     * Keeps the agents density in a region around the tile long GameConfiguration.agentsDensityRadius
+     * Keeps the agent density in a region around the tile long GameConfiguration.agentsDensityRadius
      * @private
      */
     private _agentsDensityOnTile: HashMap<Position, number> = new HashMap();
@@ -131,11 +138,10 @@ export class BeliefContainer {
     private _agentsToBeSynchronized: HashSet<Agent> = new HashSet();
 
     constructor(
-        info: PlayerInfo,
+        private readonly playerInfo: PlayerInfo,
         public readonly map: MatchMap,
     ) {
-        this._ownId = info.id.toString();
-        this._ownPosition = info.position;
+        this._ownPosition = playerInfo.position;
         for (const position of this.map.spawnTilePositions) {
             this.visitedTiles.set(position, 0);
             this._agentsDensityOnTile.set(position, 0);
@@ -169,8 +175,16 @@ export class BeliefContainer {
         return [...this._carriedParcels];
     }
 
+    get isTheMaster(): boolean {
+        return this._masterAgent;
+    }
+
     get myId(): string {
-        return this._ownId;
+        return this.playerInfo.id.toString();
+    }
+
+    get myInstantiationTime(): number {
+        return this.playerInfo.instantiatedAt;
     }
 
     /**
@@ -180,16 +194,16 @@ export class BeliefContainer {
         return this._ownPosition;
     }
 
+    set myPosition(position: Position) {
+        this._ownPosition = position;
+    }
+
     get myScore(): number {
         return this._ownScore;
     }
 
-    /**
-     * Sets the agent position according to last move
-     * @param value the value got from the server
-     */
-    set myPosition(value: Position) {
-        this._ownPosition = value;
+    get freeParcels(): Parcel[] {
+        return Array.from(this.freeParcelsById.values());
     }
 
     /**
@@ -435,31 +449,31 @@ export class BeliefContainer {
 
     findBestExplorationSite(): Position {
         // Only consider spawn tiles as potential exploration targets
-        const spawnTiles: Tile[] = this.map.getSpawnTiles();
+        const tilesToExplore: Position[] = this._assignedExplorationSector?.length
+            ? this._assignedExplorationSector
+            : this.map.spawnTilePositions;
 
         // Get the agent's visibility distance from game configuration
         const visibilityDistance = GameConfiguration.agentVisibilityDistance;
 
         // Filter spawn tiles to only include those outside the visibility area
-        const tilesOutsideVisibility: Tile[] = spawnTiles.filter((tile) => {
-            const distanceToTile = this._ownPosition.manhattanDistance(tile.position);
+        const tilesOutsideVisibility: Position[] = tilesToExplore.filter((position: Position) => {
+            const distanceToTile = this._ownPosition.manhattanDistance(position);
             return distanceToTile > visibilityDistance; // Only consider tiles outside visibility range
         });
 
         // First try to find unexplored spawn tiles outside visibility
-        const unexploredTiles: Tile[] = tilesOutsideVisibility
-            .filter((tile) => !this.visitedTiles.has(tile.position))
-            .filter((tile) => !this._temporaryBlockedExplore.has(tile.position));
+        const unexploredTiles: Position[] = tilesOutsideVisibility
+            .filter((position: Position) => !this.visitedTiles.has(position))
+            .filter((position: Position) => !this._temporaryBlockedExplore.has(position));
 
         // If we have unexplored tiles outside visibility, prioritize those
         if (unexploredTiles.length > 0) {
             return unexploredTiles
-                .map((tile: Tile) => {
-                    const distance = this._ownPosition.manhattanDistance(tile.position);
-                    return {
-                        position: tile.position,
-                        distance: distance, // Lower distance is better for unexplored tiles
-                    } as PositionWithDistance;
+                .map((position: Position) => {
+                    const distance = this._ownPosition.manhattanDistance(position);
+                    // Lower distance is better for unexplored tiles
+                    return { position, distance } as PositionWithDistance;
                 })
                 .sort((d1, d2) => d1.distance - d2.distance) // Sort by closest first
                 .map((pos) => pos.position)
@@ -468,9 +482,9 @@ export class BeliefContainer {
 
         // If no unexplored tiles outside visibility, try any spawn tile outside visibility
         if (tilesOutsideVisibility.length > 0) {
-            const exploredPositions = tilesOutsideVisibility
-                .filter((tile) => !this._temporaryBlockedExplore.has(tile.position))
-                .map((tile) => this.calculateTileExplorationFactor(tile))
+            const exploredPositions: Position = tilesOutsideVisibility
+                .filter((position: Position) => !this._temporaryBlockedExplore.has(position))
+                .map((position: Position) => this.calculateTileExplorationFactor(position))
                 .sort((a, b) => b.score - a.score) // Higher score is better
                 .filter(Boolean)
                 .map((positionData) => positionData.position)
@@ -482,9 +496,9 @@ export class BeliefContainer {
         }
 
         // Fallback: If no tiles outside visibility or all are blocked, consider any spawn tile
-        const anySpawnTiles = spawnTiles
-            .filter((tile) => !this._temporaryBlockedExplore.has(tile.position))
-            .map((tile) => this.calculateTileExplorationFactor(tile))
+        const anySpawnTiles = tilesToExplore
+            .filter((position: Position) => !this._temporaryBlockedExplore.has(position))
+            .map((position: Position) => this.calculateTileExplorationFactor(position))
             .sort((a, b) => b.score - a.score); // Higher score is better
 
         if (anySpawnTiles.length > 0) {
@@ -492,7 +506,7 @@ export class BeliefContainer {
         }
 
         // Last resort fallback: return a random spawn position
-        const spawnPositions = spawnTiles.map((tile) => tile.position);
+        const spawnPositions: Position[] = this.map.spawnTilePositions;
         return spawnPositions[Math.floor(Math.random() * spawnPositions.length)];
     }
 
@@ -724,7 +738,7 @@ export class BeliefContainer {
         const updatedParcel = new Parcel(parcelId, parcel.agentId, newPosition, parcel.score);
         this.freeParcelsById.set(parcelId, updatedParcel);
 
-        //Updating positions index
+        //Updating position index
         //Removing old entry
         this.parcelsByPosition.get(knownPosition)?.delete(parcel);
 
@@ -821,7 +835,7 @@ export class BeliefContainer {
         const timeSavings: number =
             myDistanceToMeeting + friendDistanceToMeeting;
 
-        const totalParcelValue: number = this.carriedParcels.reduce(
+        const totalParcelValue: number = this._carriedParcels.reduce(
             (sum: number, parcel: Parcel) => sum + parcel.currentScore,
             0,
         );
@@ -858,7 +872,7 @@ export class BeliefContainer {
         // Process existing agents (opponents)
         for (const agent of this.agents.values()) {
             // Skip our own agent
-            if (agent.agentId === this._ownId) continue;
+            if (agent.agentId === this.myId) continue;
 
             // Add opponent position to the list for delivery point congestion calculation
             // Only consider non-trusted agents as opponents for congestion
@@ -911,7 +925,7 @@ export class BeliefContainer {
             }
 
             // Add to opponent positions if it's not our agent
-            if (agent.agentId !== this._ownId && agent.position) {
+            if (agent.agentId !== this.myId && agent.position) {
                 opponentPositions.push(agent.position);
             }
         }
@@ -925,6 +939,20 @@ export class BeliefContainer {
         this._agentsToBeSynchronized.clear();
     }
 
+    set explorationSector(tilesToExplore: Position[]) {
+        this._assignedExplorationSector = tilesToExplore;
+    }
+
+    async calculateMapClusters(): Promise<ClusteredTiles[]> {
+        //Adding one because we must also consider the current master agent
+        const clustersNumber: number = this._trustedAgentIds.size + 1;
+        return this.map.runKMedoidsClustering(clustersNumber);
+    }
+
+    get trustedAgentsIds(): string[] {
+        return Array.from(this._trustedAgentIds.values());
+    }
+
     getAgent(agentId: string): Agent | undefined {
         return this.agents.get(agentId);
     }
@@ -932,21 +960,34 @@ export class BeliefContainer {
     /**
      * Returns the agents occupying the positions in the environment.
      */
-    getTrustedAgents(): Agent[] {
+    get trustedAgents(): Agent[] {
         return Array.from(this._trustedAgentIds.values())
             .map((agentId: string) => this.agents.get(agentId))
+            .filter(Boolean)
             .filter((agent: ObservedAgent) => !agent.isFriendExpired())
+            .map((agent: ObservedAgent) => agent.toAgent());
+    }
+
+    get opponentAgents(): Agent[] {
+        const trustedIds: string[] = this.trustedAgentsIds;
+        return Array.from(this.agents.values())
+            .filter((agent: ObservedAgent) => !trustedIds.includes(agent.agentId))
             .map((agent: ObservedAgent) => agent.toAgent());
     }
 
     /**
      * Adds an agent to the trusted agents list
-     * @param agentId The ID of the agent to trust
+     * @param agent The date of the agent to trust
      */
-    addTrustedAgent(agentId: string): void {
-        if (this._ownId !== agentId) {
-            this.agents.get(agentId)?.ping();
+    addTrustedAgent(agent: Agent): void {
+        const agentId: string = agent.agentId;
+        if (this.myId !== agentId) {
+            if (!this.agents.has(agentId)) {
+                this.agents.set(agentId, ObservedAgent.fromAgent(agent));
+            }
+
             this._trustedAgentIds.add(agentId);
+            this._masterAgent = agent.instantiationTime > this.playerInfo.instantiatedAt;
         }
     }
 
@@ -986,8 +1027,7 @@ export class BeliefContainer {
         return null;
     }
 
-    private calculateTileExplorationFactor(tile: Tile) {
-        const position = tile.position;
+    private calculateTileExplorationFactor(position: Position) {
         const visits = this.visitedTiles.get(position) || 0;
         const distance = this._ownPosition.manhattanDistance(position);
         const agentsDensityMalus = this._agentsDensityOnTile.get(position) || 0;
