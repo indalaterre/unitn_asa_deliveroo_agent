@@ -1,7 +1,8 @@
+import type { ClusteredTiles } from "@utils/clustering-worker";
 import { BeliefContainer } from "./beliefs";
 import type { Actuator } from "./communication";
 import { MessageFactory } from "./communication/message-factory";
-import type { Messenger } from "./communication/messenger";
+import type { HelloMessage, Messenger } from "./communication/messenger";
 import type { Sensor } from "./communication/sensor";
 import { DesiresManager } from "./desires";
 import { IntentionManager } from "./intentions";
@@ -24,16 +25,10 @@ export class PlayerBDI {
     private _isAlive = false;
 
     /**
-     * The handle of the statistics logging interval
+     * TRUE if the clustering of the map is active
      * @private
      */
-    private _statsInterval: any;
-
-    /**
-     * The handle of the hello sending interval
-     * @private
-     */
-    private _helloSendingInterval: any;
+    private _canRecalculateMapSectors = false;
 
     /**
      * Contains all the beliefs of the agent
@@ -99,6 +94,35 @@ export class PlayerBDI {
 
         // Set up messenger handlers
         this.setupMessengerHandlers();
+
+        //Waiting 10 seconds before starting the exploration partitioning
+        //This would let other friend agents to join
+        setTimeout(async () => {
+            if (!this._beliefs.isTheMaster) return;
+
+            this._canRecalculateMapSectors = true;
+            await this.assignExplorationSectors();
+        }, 4000);
+    }
+
+    /**
+     * Starts the player
+     */
+    async start(): Promise<void> {
+        this._isAlive = true;
+
+        // Set up interval to log statistics periodically
+        setInterval(() => {
+            this._statsLogger.logStatistics();
+        }, 10000); // Log every 10 seconds
+
+        // Set up interval to send hello messages
+        setInterval(async () => {
+            await this.shoutHelloMessage();
+        }, 1000);
+
+        // Start the main loop
+        await Promise.all([this.shoutHelloMessage(), this._run()]);
     }
 
     /**
@@ -115,22 +139,31 @@ export class PlayerBDI {
         // Handle agent sensing
         sensor.onAgentSensing(async (agents: Agent[]) => {
             this._beliefs.queueAgentsSynchronization(agents);
-
-            // Share agent information with other agents
-            await this.messenger.shoutAgentsInfo(
-                MessageFactory.createAgentsUpdateMessage(this.playerInfo.id.toString(), agents),
-            );
         });
 
         // Handle parcel detection
         sensor.onParcelDetected(async (parcels: Parcel[]) => {
             this._beliefs.queueParcelsSynchronization(parcels);
-
-            // Share parcel information with other agents
-            await this.messenger.shoutParcelInfo(
-                MessageFactory.createParcelInfoMessage(this.playerInfo.id.toString(), parcels),
-            );
         });
+
+        setInterval(async () => {
+            await this.messenger.sendParcelInfo(
+                MessageFactory.createParcelInfoMessage(
+                    this.playerInfo.id.toString(),
+                    this._beliefs.trustedAgentsIds,
+                    this._beliefs.freeParcels,
+                ),
+            );
+
+            // Share agent information with other agents
+            await this.messenger.sendAgentsInfo(
+                MessageFactory.createAgentsUpdateMessage(
+                    this.playerInfo.id.toString(),
+                    this._beliefs.trustedAgentsIds,
+                    this._beliefs.opponentAgents,
+                ),
+            );
+        }, 4000);
     }
 
     /**
@@ -150,18 +183,28 @@ export class PlayerBDI {
 
         // Handle hello messages
         this.messenger.onHelloMessageReceived(async (agent: Agent) => {
-            this._beliefs.addTrustedAgent(agent.agentId);
+            if (this._beliefs.isTrustedAgent(agent.agentId)) {
+                return;
+            }
+
+            this._beliefs.addTrustedAgent(agent);
             this._beliefs.queueAgentsSynchronization([agent]);
+            await this.assignExplorationSectors();
 
             // Reply with our own hello message
-            const helloMessage = MessageFactory.createHelloMessage(
+            const helloMessage: HelloMessage = MessageFactory.createHelloMessage(
                 this.playerInfo.id.toString(),
                 this._beliefs.myPosition,
                 this._beliefs.myScore,
+                agent.instantiationTime,
                 agent.agentId,
             );
 
             await this.messenger.replyHelloMessage(helloMessage);
+        });
+
+        this.messenger.onExplorationAssignmentReceived((assignment: Position[]) => {
+            this._beliefs.explorationSector = assignment;
         });
 
         // Additional handlers for handoff messages would be added here
@@ -176,57 +219,22 @@ export class PlayerBDI {
     }
 
     /**
-     * Starts the player
-     */
-    async start(): Promise<void> {
-        this._isAlive = true;
-
-        // Set up interval to log statistics periodically
-        this._statsInterval = setInterval(() => {
-            this._statsLogger.logStatistics();
-        }, 10000); // Log every 10 seconds
-
-        // Set up interval to send hello messages
-        this._helloSendingInterval = setInterval(async () => {
-            await this.shoutHelloMessage();
-        }, 1000);
-
-        // Start the main loop
-        await Promise.all([this.shoutHelloMessage(), this._run()]);
-    }
-
-    /**
-     * Stops the player
-     */
-    stop(): void {
-        this._isAlive = false;
-
-        this._statsInterval && clearInterval(this._statsInterval);
-        this._helloSendingInterval && clearInterval(this._helloSendingInterval);
-
-        // Log final statistics when stopping
-        console.log("\n"); // Add a newline before final stats
-        this._statsLogger.logFinalStatistics();
-        console.log(""); // Add a newline after final stats
-    }
-
-    /**
      * Sends a hello message to all agents
      * @private
      */
     private async shoutHelloMessage(): Promise<void> {
-        const helloMessage = MessageFactory.createHelloMessage(
+        const helloMessage: HelloMessage = MessageFactory.createHelloMessage(
             this.playerInfo.id.toString(),
             this._beliefs.myPosition,
             this._beliefs.myScore,
+            this._beliefs.myInstantiationTime,
         );
 
         await this.messenger.shoutHelloMessage(helloMessage);
     }
 
     /**
-     * Main execution loop
-     * @private
+     * This method implements the agent loop
      */
     private async _run(): Promise<void> {
         while (this._isAlive) {
@@ -284,7 +292,7 @@ export class PlayerBDI {
         const isIncoming = handoff.receiverId === this.playerInfo.id.toString();
 
         if (isIncoming) {
-            // We're receiving parcels
+            // We're receiving parcel
             // Wait for the initiator to put down the parcels
             return false; // Not complete yet
         } else {
@@ -302,5 +310,44 @@ export class PlayerBDI {
                 return false;
             }
         }
+    }
+
+    private async assignExplorationSectors(): Promise<void> {
+        if (!this._canRecalculateMapSectors || !this._beliefs.isTheMaster) return;
+
+        const trustedAgents: Agent[] = this._beliefs.trustedAgents;
+        if (!trustedAgents?.length) {
+            return;
+        }
+
+        const mapClusters: ClusteredTiles[] = await this._beliefs.calculateMapClusters();
+
+        for (const agent of trustedAgents) {
+            const agentPosition: Position = agent.position;
+            const closestMedoid = mapClusters
+                .map((cluster: ClusteredTiles, index: number) => {
+                    return {
+                        cluster,
+                        clusterIndex: index,
+                        distance: cluster.medoid.manhattanDistance(agentPosition),
+                    };
+                })
+                .sort((d1, d2) => d1.distance - d2.distance)
+                .shift();
+
+            mapClusters.splice(closestMedoid.clusterIndex, 1);
+
+            await this.messenger.sendExplorationAssignment(
+                MessageFactory.createExplorationAssignmentMessage(
+                    this._beliefs.myId,
+                    agent.agentId,
+                    closestMedoid.cluster.positions,
+                ),
+            );
+        }
+
+        //Assigning the remaining cluster to the current master agent
+        const remainingCluster: ClusteredTiles = mapClusters.shift();
+        this._beliefs.explorationSector = remainingCluster.positions;
     }
 }

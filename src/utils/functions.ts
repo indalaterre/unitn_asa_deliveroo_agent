@@ -13,3 +13,21 @@ export const extractFirstElementsInSortedArray = <T>(
 
     return array.slice(0, i);
 };
+
+export const groupByMapping = <T, K extends keyof T, M extends keyof T>(
+    array: T[],
+    key: K,
+    mapping: M,
+): Map<T[K], T[M][]> => {
+    const map: Map<T[K], T[M][]> = new Map<T[K], T[M][]>();
+
+    for (const item of array) {
+        const groupKey: T[K] = item[key];
+        if (!map.has(groupKey)) {
+            map.set(groupKey, []);
+        }
+        map.get(groupKey)!.push(item[mapping]);
+    }
+
+    return map;
+};

@@ -16,6 +16,7 @@ import { IdAware } from "@domain/models/id-aware";
 import { PlayerInfo } from "@domain/player-info";
 import type {
     AgentPositionUpdate,
+    ExplorationSectorAssignment,
     HandoffConfirmMessage,
     HandoffRequestMessage,
     HelloMessage,
@@ -39,7 +40,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         this._cipher = new Cipher(cryptoConfiguration);
     }
 
-    sendHandoffRequest(request: HandoffRequest): Promise<void> {
+    sendHandoffRequest(request: HandoffRequest): Promise<void[]> {
         const message: HandoffRequestMessage = MessageFactory.createHandoffRequestMessage(
             request.requestId,
             request.initiatorId,
@@ -61,7 +62,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
             const request: HandoffRequest = {
                 requestId: message.requestId,
                 initiatorId: message.senderId,
-                receiverId: message.recipientId,
+                receiverId: message.recipientIds[0],
                 parcelIds: message.parcelIds,
                 meetingPosition: message.meetingPosition,
                 urgency: message.urgency,
@@ -80,13 +81,14 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         initiatorId: string,
         recipientId: string,
         estimatedArrivalTime: number,
-    ): Promise<void> {
+    ): Promise<void[]> {
         const message: HandoffConfirmMessage = MessageFactory.createHandoffConfirmMessage(
             requestId,
             initiatorId,
             recipientId,
             estimatedArrivalTime,
         );
+
         return this.sendMessage(message);
     }
 
@@ -322,20 +324,25 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         return this.shoutMessage(message);
     }
 
-    replyHelloMessage(message: HelloMessage): Promise<void> {
+    replyHelloMessage(message: HelloMessage): Promise<void[]> {
         return this.sendMessage(message);
     }
 
     onHelloMessageReceived(callback: (agent: Agent) => void): void {
         this.onMessageReceived((message: HelloMessage) => {
             const agentPosition = new Position(message.position.row, message.position.column);
-            const agent = new Agent(message.senderId, agentPosition, message.score);
+            const agent = new Agent(
+                message.senderId,
+                agentPosition,
+                message.score,
+                message.instantiationTime,
+            );
 
             callback(agent);
         });
     }
 
-    shoutParcelInfo(message: ParcelInfoMessage): Promise<void> {
+    sendParcelInfo(message: ParcelInfoMessage): Promise<any> {
         return this.sendMessage(message);
     }
 
@@ -354,8 +361,8 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         });
     }
 
-    shoutAgentsInfo(message: AgentPositionUpdate): Promise<void> {
-        return this.shoutMessage(message);
+    sendAgentsInfo(message: AgentPositionUpdate): Promise<any> {
+        return this.sendMessage(message);
     }
 
     onAgentsInfoReceived(callback: (agents: Agent[]) => void): void {
@@ -369,6 +376,16 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         });
     }
 
+    sendExplorationAssignment(message: ExplorationSectorAssignment): Promise<void[]> {
+        return this.sendMessage(message);
+    }
+
+    onExplorationAssignmentReceived(callback: (assignment: Position[]) => void): void {
+        this.onMessageReceived((message: ExplorationSectorAssignment) => {
+            if (!message?.positions?.length) callback(message.positions);
+        });
+    }
+
     private shoutMessage(message: Message): Promise<void> {
         return new Promise((resolve, _reject) => {
             const encrypted: string = this._cipher.encryptObject(message);
@@ -376,18 +393,27 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         });
     }
 
-    private sendMessage(message: Message): Promise<void> {
-        return new Promise((resolve, _reject) => {
-            const encrypted: string = this._cipher.encryptObject(message);
-            return this._socket.emit("say", message.recipientId, encrypted, () => resolve());
-        });
+    private sendMessage(message: Message): Promise<void[]> {
+        const encrypted: string = this._cipher.encryptObject(message);
+        const promises: Promise<void>[] = [];
+
+        console.log(`Sending message ${message.type} from ${message.senderId} `);
+        for (const recipient of message.recipientIds) {
+            promises.push(
+                new Promise((resolve, _reject) => {
+                    return this._socket.emit("say", recipient, encrypted, () => resolve());
+                }),
+            );
+        }
+
+        return Promise.all(promises);
     }
 
-    private onMessageReceived(callback: (message: Message) => void): void {
+    private onMessageReceived<T extends Message>(callback: (message: T) => void): void {
         this._socket.on("msg", (id: string, _name: string, encryptedMessage: string) => {
             try {
                 if (id !== this._myAgentId) {
-                    const message: Message = this._cipher.decryptObject(encryptedMessage);
+                    const message: T = this._cipher.decryptObject(encryptedMessage);
                     callback(message);
                 }
             } catch (ex) {}

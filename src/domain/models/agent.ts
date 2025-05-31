@@ -7,6 +7,7 @@ export class Agent extends IdAware {
         public readonly agentId: string,
         public position: Position,
         public score: number,
+        public instantiationTime?: number,
     ) {
         super(agentId);
     }

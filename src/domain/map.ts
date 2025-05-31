@@ -1,7 +1,11 @@
-import { Directions, type Position, type Tile } from "@domain/models/environment";
+import { Position, type Tile } from "@domain/models/environment";
+import type { ClusteredTiles, ClusteringRequest } from "@utils/clustering-worker";
 import { Graph } from "@utils/graph";
 import { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
+
+import path from "node:path";
+import workerpool, { type Pool } from "workerpool";
 
 /**
  * Models a position and its distance
@@ -87,58 +91,6 @@ export class MatchMap {
         this._graph.forEachNode((_: string, tile: Tile) => tiles.push(tile));
 
         return tiles;
-    }
-
-    public getPddlMap(): Map<string, string[]> {
-        const result = new Map();
-
-        const pddlObjects = [];
-        const pddlInit = [];
-
-        for (const node of this._graph.nodeEntries()) {
-            pddlObjects.push(`${node.attributes.pddlSerialize()}`);
-
-            for (const neighbor of this._graph.neighborEntries(node.node)) {
-                if (
-                    node.attributes.position
-                        .moveTo(Directions.LEFT)
-                        .equals(neighbor.attributes.position)
-                ) {
-                    pddlInit.push(
-                        `(left ${node.attributes.pddlSerialize()} ${neighbor.attributes.pddlSerialize()})`,
-                    );
-                } else if (
-                    node.attributes.position
-                        .moveTo(Directions.UP)
-                        .equals(neighbor.attributes.position)
-                ) {
-                    pddlInit.push(
-                        `(above ${node.attributes.pddlSerialize()} ${neighbor.attributes.pddlSerialize()})`,
-                    );
-                } else if (
-                    node.attributes.position
-                        .moveTo(Directions.RIGHT)
-                        .equals(neighbor.attributes.position)
-                ) {
-                    pddlInit.push(
-                        `(right ${node.attributes.pddlSerialize()} ${neighbor.attributes.pddlSerialize()})`,
-                    );
-                } else if (
-                    node.attributes.position
-                        .moveTo(Directions.DOWN)
-                        .equals(neighbor.attributes.position)
-                ) {
-                    pddlInit.push(
-                        `(belowe ${node.attributes.pddlSerialize()} ${neighbor.attributes.pddlSerialize()})`,
-                    );
-                }
-            }
-        }
-
-        result.set("objects", pddlObjects);
-        result.set("init", pddlInit);
-
-        return result;
     }
 
     public getDeliveryTiles(): Tile[] {
@@ -233,7 +185,7 @@ export class MatchMap {
 
         let chosenBestDelivery: PositionWithDistance = null;
         for (const delivery of bestDeliverySites) {
-            if (!!this.calculatePath(position, delivery.position, occupiedTiles?.all)) {
+            if (this.calculatePath(position, delivery.position, occupiedTiles?.all)) {
                 chosenBestDelivery = delivery;
                 break;
             }
@@ -296,5 +248,42 @@ export class MatchMap {
 
     isDeliveryPosition(position: Position): boolean {
         return this._deliveryPositions.has(position);
+    }
+
+    /**
+     * Runs k-medoids clustering in a Web Worker to avoid blocking the main thread
+     * @param k Number of clusters to create
+     * @param maxIterations Maximum number of iterations for the algorithm
+     * @returns Promise that resolves to the clustering result
+     */
+    async runKMedoidsClustering(k: number, maxIterations = 100): Promise<ClusteredTiles[]> {
+        const spawnPositions: Position[] = this.spawnTilePositions;
+
+        //Creating the async worker,
+        const workerPool: Pool = workerpool.pool(
+            path.join(__dirname, "/utils/clustering-worker.js"),
+            { maxWorkers: 1 },
+        );
+
+        const clusterRequest = {
+            k,
+            maxIterations,
+            positions: spawnPositions.map((pos) => ({ row: pos.row, column: pos.column })),
+        } as ClusteringRequest;
+
+        const workerResult = await workerPool.exec("kMedoidsClustering", [
+            clusterRequest.positions,
+            clusterRequest.k,
+            clusterRequest.maxIterations,
+        ]);
+        await workerPool.terminate();
+
+        return workerResult.map((result: any) => {
+            return {
+                label: result.label,
+                positions: result.positions.map((pos) => new Position(pos.row, pos.column)),
+                medoid: new Position(result.medoid.row, result.medoid.column),
+            } as ClusteredTiles;
+        });
     }
 }
