@@ -127,7 +127,7 @@ export class DesiresManager {
         benefit: number;
     } | null {
         // Find potential handoff partners
-        const agents: Agent[] = this.beliefs.getTrustedAgents();
+        const agents: Agent[] = this.beliefs.trustedAgents;
         let bestPartner = null;
         let maxBenefit = 0;
 

@@ -168,6 +168,13 @@ export class BeliefContainer {
         return this._carriedParcels.map((parcel: Parcel) => parcel.id);
     }
 
+    /**
+     * The parcels carried by the agent
+     */
+    get carriedParcels(): Parcel[] {
+        return [...this._carriedParcels];
+    }
+
     get isTheMaster(): boolean {
         return this._masterAgent;
     }
@@ -318,10 +325,10 @@ export class BeliefContainer {
                     // Calculate competitive score using the delivery point manager
                     const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
                         tilePosition,
-                        distance || Number.POSITIVE_INFINITY,
+                        distance ?? Number.POSITIVE_INFINITY,
                     );
 
-                    // Get additional agent density from surrounding area
+                    // Get additional agent density from the surrounding area
                     const agentsDensity = this._agentsDensityOnTile.get(tilePosition) ?? 0;
 
                     // Get tactical advantage score (higher is better)
@@ -363,7 +370,7 @@ export class BeliefContainer {
                         return 1; // d2 comes first (reachable before blocked)
                     }
 
-                    // If both have same reachability status, sort by weighted score
+                    // If both have the same reachability status, sort by weighted score
                     return d1.context.weightedDistance - d2.context.weightedDistance;
                 })
                 .shift()

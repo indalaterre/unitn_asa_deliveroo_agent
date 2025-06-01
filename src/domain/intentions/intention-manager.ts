@@ -6,7 +6,6 @@ import type { Directions, Position } from "@domain/models/environment";
 import {
     type HandoffCoordinator,
     type HandoffRequest,
-    HandoffStatus,
 } from "@domain/models/handoff-coordinator";
 import { Intention, IntentionTypes } from "@domain/models/intention";
 import { IntentionQueue } from "@domain/models/intention-queue";
@@ -18,7 +17,6 @@ import { EventEmitter } from "eventemitter3";
  * Responsible for converting desires into intentions and executing them
  */
 export class IntentionManager {
-    private readonly MAX_CONSECUTIVE_FAILURES: number = 4;
 
     /**
      * Queue of intentions ordered by priority
@@ -115,7 +113,7 @@ export class IntentionManager {
                 // Reset failures on success
                 this._currentIntention.resetFailures();
 
-                // Check if intention is complete
+                // Check if the intention is complete
                 if (this.isIntentionComplete(this._currentIntention)) {
                     this._currentIntention = null;
                 }
@@ -491,7 +489,7 @@ export class IntentionManager {
                     }
                 }
 
-                // Calculate path to target
+                // Calculate a path to target
                 return await this.moveTowards(intention);
 
             case IntentionTypes.PICK_UP:
@@ -508,7 +506,7 @@ export class IntentionManager {
                 return Promise.resolve(true);
 
             case IntentionTypes.PUT_DOWN:
-                // Execute put down action
+                // Execute put-down action
                 const carriedParcels: Parcel[] = this.beliefs.carriedParcels;
                 const parcelsToDrop: string[] = this.beliefs.carryingParcelIds;
                 const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
@@ -578,7 +576,12 @@ export class IntentionManager {
         }
 
         const nextDirection: Directions = this.beliefs.myPosition.getDirection(nextPosition);
-        return await this.actuator.move(nextDirection);
+        const successfulMove: boolean = await this.actuator.move(nextDirection);
+        if(successfulMove) {
+            this.beliefs.myPosition = nextPosition;
+        }
+
+        return successfulMove;
     }
 
     /**

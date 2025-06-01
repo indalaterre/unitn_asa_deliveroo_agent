@@ -131,11 +131,6 @@ export class PlayerBDI {
      * @private
      */
     private setupSensorHandlers(sensor: Sensor): void {
-        // Handle position updates
-        sensor.onPlayerPositionUpdate((position: Position) => {
-            this.updatePlayerPosition(position);
-        });
-
         // Handle agent sensing
         sensor.onAgentSensing(async (agents: Agent[]) => {
             this._beliefs.queueAgentsSynchronization(agents);
@@ -147,22 +142,24 @@ export class PlayerBDI {
         });
 
         setInterval(async () => {
-            await this.messenger.sendParcelInfo(
-                MessageFactory.createParcelInfoMessage(
-                    this.playerInfo.id.toString(),
-                    this._beliefs.trustedAgentsIds,
-                    this._beliefs.freeParcels,
-                ),
-            );
+            if (this._beliefs.trustedAgents?.length) {
+                await this.messenger.sendParcelInfo(
+                    MessageFactory.createParcelInfoMessage(
+                        this.playerInfo.id.toString(),
+                        this._beliefs.trustedAgentsIds,
+                        this._beliefs.freeParcels,
+                    ),
+                );
 
-            // Share agent information with other agents
-            await this.messenger.sendAgentsInfo(
-                MessageFactory.createAgentsUpdateMessage(
-                    this.playerInfo.id.toString(),
-                    this._beliefs.trustedAgentsIds,
-                    this._beliefs.opponentAgents,
-                ),
-            );
+                // Share agent information with other agents
+                await this.messenger.sendAgentsInfo(
+                    MessageFactory.createAgentsUpdateMessage(
+                        this.playerInfo.id.toString(),
+                        this._beliefs.trustedAgentsIds,
+                        this._beliefs.opponentAgents,
+                    ),
+                );
+            }
         }, 4000);
     }
 
@@ -208,14 +205,6 @@ export class PlayerBDI {
         });
 
         // Additional handlers for handoff messages would be added here
-    }
-
-    /**
-     * Updates the player's position
-     * @param position The new position
-     */
-    private updatePlayerPosition(position: Position): void {
-        this._beliefs.myPosition = position;
     }
 
     /**
