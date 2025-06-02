@@ -32,6 +32,16 @@ services:
       - LEVEL=levels/25c1_3
       - PORT=4001
 
+  25c1_4:
+    image: it.unitn.deliveroojs
+    ports:
+      - "4006:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_4
+      - PORT=4001
+
   25c2_hallway:
     image: it.unitn.deliveroojs
     ports:

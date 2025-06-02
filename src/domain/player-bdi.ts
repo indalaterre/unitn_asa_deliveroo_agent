@@ -7,7 +7,7 @@ import type { Sensor } from "./communication/sensor";
 import { DesiresManager } from "./desires";
 import { IntentionManager } from "./intentions";
 import type { MatchMap } from "./map";
-import type { Parcel } from "./models";
+import { type Duration, GameConfiguration, type Parcel } from "./models";
 import type { Agent } from "./models/agent";
 import type { Directions, Position } from "./models/environment";
 import { HandoffCoordinator, type HandoffRequest } from "./models/handoff-coordinator";
@@ -111,6 +111,8 @@ export class PlayerBDI {
     async start(): Promise<void> {
         this._isAlive = true;
 
+        const agentTimeout: Duration = GameConfiguration.agentTimeout;
+
         // Set up interval to log statistics periodically
         setInterval(() => {
             this._statsLogger.logStatistics();
@@ -119,7 +121,7 @@ export class PlayerBDI {
         // Set up interval to send hello messages
         setInterval(async () => {
             await this.shoutHelloMessage();
-        }, 1000);
+        }, agentTimeout.milliseconds + 1000);
 
         // Start the main loop
         await Promise.all([this.shoutHelloMessage(), this._run()]);

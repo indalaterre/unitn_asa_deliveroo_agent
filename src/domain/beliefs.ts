@@ -381,6 +381,13 @@ export class BeliefContainer {
         const distanceFromDelivery: number = this._ownPosition.manhattanDistance(delivery);
         const carryingParcelIds: Set<string> = new Set(this.carryingParcelIds);
 
+        const maxSpawnableParcels: number = GameConfiguration.maxSpawnableParcels;
+        if (carryingParcelIds.size === maxSpawnableParcels) {
+            return null;
+        }
+
+        const parcelsVisibility: number = GameConfiguration.parcelVisibilityDistance;
+
         const candidatePosition: PositionWithDistance = Array.from(this.freeParcelsById.values())
             .filter(
                 (parcel: Parcel) =>
@@ -391,7 +398,8 @@ export class BeliefContainer {
                     .calculatePath(this.myPosition, parcel.position)
                     ?.slice(1);
 
-                if (toParcelPath) {
+                //We are filtering to have only the parcels the agent can see
+                if (toParcelPath?.length <= parcelsVisibility) {
                     return {
                         context: { parcel },
                         position: parcel.position,

@@ -3,10 +3,7 @@ import type { Actuator } from "@domain/communication";
 import { type Desire, DesireTypes, type DesiresManager } from "@domain/desires";
 import { type Agent, GameConfiguration, type Parcel } from "@domain/models";
 import type { Directions, Position } from "@domain/models/environment";
-import {
-    type HandoffCoordinator,
-    type HandoffRequest,
-} from "@domain/models/handoff-coordinator";
+import type { HandoffCoordinator, HandoffRequest } from "@domain/models/handoff-coordinator";
 import { Intention, IntentionTypes } from "@domain/models/intention";
 import { IntentionQueue } from "@domain/models/intention-queue";
 import type { StatisticsLogger } from "@domain/models/statistics-logger";
@@ -17,7 +14,6 @@ import { EventEmitter } from "eventemitter3";
  * Responsible for converting desires into intentions and executing them
  */
 export class IntentionManager {
-
     /**
      * Queue of intentions ordered by priority
      * @private
@@ -577,7 +573,7 @@ export class IntentionManager {
 
         const nextDirection: Directions = this.beliefs.myPosition.getDirection(nextPosition);
         const successfulMove: boolean = await this.actuator.move(nextDirection);
-        if(successfulMove) {
+        if (successfulMove) {
             this.beliefs.myPosition = nextPosition;
         }
 
