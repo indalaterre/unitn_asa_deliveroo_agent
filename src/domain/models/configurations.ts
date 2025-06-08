@@ -11,6 +11,7 @@ export type EnvironmentConfiguration = {
     readonly agentVisibilityDistance: number;
     readonly maxParcels: number;
     readonly numRandomAgents: number;
+    readonly agentTimeout: Duration;
     readonly randomAgentMovementDuration: Duration;
 
     //Calculated value
@@ -102,7 +103,11 @@ export class GameConfiguration {
         return GameConfiguration._instance._agentConfiguration.agentsDensityRadius;
     }
 
-    static get maxCarryingParcels(): number {
-        return GameConfiguration._instance._agentConfiguration.maxCarryingParcels;
+    static get agentTimeout(): Duration {
+        return GameConfiguration._instance._environmentConfiguration.agentTimeout;
+    }
+
+    static get maxSpawnableParcels(): number {
+        return GameConfiguration._instance._environmentConfiguration.maxParcels;
     }
 }

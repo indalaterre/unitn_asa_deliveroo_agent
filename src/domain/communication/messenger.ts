@@ -1,6 +1,6 @@
 import type { Agent, Parcel } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import type { HandoffRequest, HandoffStatus, HandoffResponse } from "@domain/models/handoff-coordinator";
+import type { HandoffRequest, HandoffStatus, HandoffResponse, HandoffUpdate, HandoffUpdateType, HandoffActionRequire } from "@domain/models/handoff-coordinator";
 
 /**
  * Message types for agent communication
@@ -11,7 +11,7 @@ export enum MessageType {
     AGENT_UPDATE = "agent_update", // Update information about other agents
     HANDOFF_REQUEST = "handoff_request", // Request to hand off parcels to another agent
     HANDOFF_RESPONSE = "handoff_response", // Response to a handoff request
-    HANDOFF_CONFIRM = "handoff_confirm", // Confirmation that a handoff has occurred
+    HANDOFF_UPDATE = "handoff_update",
     EXPLORATION_SECTOR_ASSIGNMENT = "exploration_sector_assignment",
 }
 
@@ -78,6 +78,7 @@ export interface HandoffRequestMessage extends Message {
     timeToMeet: number; // Timestamp for when to meet
     expiresAt: number; // When this request expires
     status: HandoffStatus;
+    actionRequired: HandoffActionRequire;
     estimatedArrivalTime?: number;
 }
 
@@ -86,9 +87,23 @@ export interface HandoffRequestMessage extends Message {
  */
 export interface HandoffResponseMessage extends Message {
     type: MessageType.HANDOFF_RESPONSE;
-    status: HandoffStatus;  // 
-    requestId: string; // ID of the original request
-    estimatedArrivalTime: number; // When the agent expected to arrive
+    requestId: string;
+    status: HandoffStatus;
+    meetingPosition: Position;
+    estimatedArrivalTime: number;
+}
+
+/**
+ * Handoff confirmation message
+ */
+export interface HandoffUpdateMessage extends Message {
+    type: MessageType.HANDOFF_UPDATE;
+    updateId: string,
+    handoffId: string;
+    updateType: HandoffUpdateType;
+    meetingPosition: Position;
+    actionRequired: HandoffActionRequire;
+    estimatedArrivalTime: number;
 }
 
 /**
@@ -175,4 +190,16 @@ export interface Messenger {
      * @param callback 
      */
     onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void;
+
+    /**
+     * 
+     * @param handoffMessage 
+     */
+    sendHandoffUpdateMessage(handoffMessage: HandoffUpdate): Promise<void[]>;
+
+    /**
+     * 
+     * @param callback 
+     */
+    onHandoffUpdateReceived(callback: (update: HandoffUpdate) => void): void;
 }

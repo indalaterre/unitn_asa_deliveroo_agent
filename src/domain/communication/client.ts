@@ -11,7 +11,7 @@ import { Duration, type EnvironmentConfiguration, Parcel } from "@domain/models"
 import { Agent } from "@domain/models/agent";
 import type { CryptoConfiguration } from "@domain/models/configurations";
 import { DecayingValue } from "@domain/models/decaying-value";
-import type { HandoffRequest, HandoffResponse, HandoffStatus } from "@domain/models/handoff-coordinator";
+import type { HandoffRequest, HandoffResponse, HandoffUpdate } from "@domain/models/handoff-coordinator";
 import { IdAware } from "@domain/models/id-aware";
 import { PlayerInfo } from "@domain/player-info";
 import { MessageType } from "./messenger";
@@ -20,6 +20,7 @@ import type {
     ExplorationSectorAssignment,
     HandoffResponseMessage,
     HandoffRequestMessage,
+    HandoffUpdateMessage,
     HelloMessage,
     Message,
     Messenger,
@@ -52,6 +53,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
             request.timeToMeet,
             request.expiresAt,
             request.status,
+            request.actionRequired,
             request.estimatedArrivalTime,
         );
 
@@ -75,6 +77,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                 timeToMeet: message.timeToMeet,
                 expiresAt: message.expiresAt,
                 status: message.status,
+                actionRequired: message.actionRequired,
                 estimatedArrivalTime: message.estimatedArrivalTime,
             };
 
@@ -90,6 +93,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
             handoffResponse.initiatorId,
             handoffResponse.recipientIds,
             handoffResponse.status,
+            handoffResponse.meetingPosition,
             handoffResponse.estimatedArrivalTime,
         );
 
@@ -104,7 +108,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         this.onMessageReceived((message: HandoffResponseMessage) => {
 
             if (message.type != MessageType.HANDOFF_RESPONSE) {
-                return;
+                return
             }
 
             const parsedResponse: HandoffResponse = {
@@ -119,23 +123,52 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         });
     }
 
-    //sendHandoffUpdateMessage(
-    //        requestId: string,
-    //        initiatorId: string,
-    //        recipientId: string,
-    //        status: HandoffStatus,
-    //        estimatedArrivalTime: number,
-    //        position: Position
-    //    ): Promise<void[]> {
-    //    const message: HandoffConfirmMessage = MessageFactory.createHandoffConfirmMessage(
-    //        requestId,
-    //        initiatorId,
-    //        recipientId,
-    //        estimatedArrivalTime,
-    //    );
-//
-    //    return this.sendMessage(message);
-    //}
+    /**
+     * 
+     * @param handoffUpdate 
+     */
+    sendHandoffUpdateMessage(handoffUpdate: HandoffUpdate): Promise<void[]> {
+        const message: HandoffUpdateMessage = MessageFactory.createHandoffUpdateMessage(
+            handoffUpdate.updateId,
+            handoffUpdate.handoffId,
+            handoffUpdate.initiatorId,
+            handoffUpdate.receiverId,
+            handoffUpdate.updateType,
+            handoffUpdate.meetingPosition,
+            handoffUpdate.actionRequired,
+            handoffUpdate.estimatedArrivalTime
+        );
+
+        return this.sendMessage(message);
+    }
+
+     /**
+     * 
+     * @param callback 
+     */
+    onHandoffUpdateReceived(callback: (response: HandoffUpdate) => void): void {
+        this.onMessageReceived((message: HandoffUpdateMessage) => {
+
+            if (message.type != MessageType.HANDOFF_UPDATE) {
+                return;
+            }
+
+            console.log(`onHandoffUpdateReceived ${message.meetingPosition}`);
+
+            const parsedResponse: HandoffUpdate = {
+                updateId: message.updateId,
+                handoffId: message.handoffId,
+                initiatorId: message.senderId,
+                receiverId: message.recipientIds[0],
+                updateType: message.updateType,
+                meetingPosition: (message.meetingPosition ? new Position(message.meetingPosition.row, message.meetingPosition.column) : null),
+                actionRequired: message.actionRequired,
+                estimatedArrivalTime: message.estimatedArrivalTime,
+            };
+
+            callback(parsedResponse);
+        });
+    }
 
     move(direction: Directions): Promise<boolean> {
         if (direction === Directions.NONE) {

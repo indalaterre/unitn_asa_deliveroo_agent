@@ -138,7 +138,7 @@ export class BeliefContainer {
     private _agentsToBeSynchronized: HashSet<Agent> = new HashSet();
 
     constructor(
-        private readonly playerInfo: PlayerInfo,
+        public readonly playerInfo: PlayerInfo,
         public readonly map: MatchMap,
     ) {
         this._ownPosition = playerInfo.position;
@@ -158,6 +158,9 @@ export class BeliefContainer {
      * @returns TRUE if the agent is carrying at least one parcel
      */
     get isCarrying(): boolean {
+
+        this._carriedParcels = this._carriedParcels.filter((parcel) => !parcel.expired);
+
         return !!this._carriedParcels?.length;
     }
 
@@ -165,11 +168,14 @@ export class BeliefContainer {
      * @returns the id of the parcel being carried
      */
     get carryingParcelIds(): string[] {
+
+        this._carriedParcels = this._carriedParcels.filter((parcel) => !parcel.expired);
+
         return this._carriedParcels.map((parcel: Parcel) => parcel.id);
     }
 
     /**
-     * @returns the parcels being carried by the agent
+     * The parcels carried by the agent
      */
     get carriedParcels(): Parcel[] {
         return [...this._carriedParcels];
@@ -311,7 +317,7 @@ export class BeliefContainer {
                     const path = this.map.calculatePath(
                         requestPosition,
                         tilePosition,
-                        blockedDeliveries?.all,
+                        blockedDeliveries?.all.concat(this.getOccupiedPositions()),
                     );
                     const distance = this.map.distanceIfPossible(requestPosition, tilePosition);
 
@@ -325,10 +331,10 @@ export class BeliefContainer {
                     // Calculate competitive score using the delivery point manager
                     const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
                         tilePosition,
-                        distance || Number.POSITIVE_INFINITY,
+                        distance ?? Number.POSITIVE_INFINITY,
                     );
 
-                    // Get additional agent density from surrounding area
+                    // Get additional agent density from the surrounding area
                     const agentsDensity = this._agentsDensityOnTile.get(tilePosition) ?? 0;
 
                     // Get tactical advantage score (higher is better)
@@ -370,7 +376,7 @@ export class BeliefContainer {
                         return 1; // d2 comes first (reachable before blocked)
                     }
 
-                    // If both have same reachability status, sort by weighted score
+                    // If both have the same reachability status, sort by weighted score
                     return d1.context.weightedDistance - d2.context.weightedDistance;
                 })
                 .shift()
@@ -380,6 +386,13 @@ export class BeliefContainer {
     findAdditionalParcelWorthToKeep(delivery: Position): PositionWithDistance {
         const distanceFromDelivery: number = this._ownPosition.manhattanDistance(delivery);
         const carryingParcelIds: Set<string> = new Set(this.carryingParcelIds);
+
+        const maxSpawnableParcels: number = GameConfiguration.maxSpawnableParcels;
+        if (carryingParcelIds.size === maxSpawnableParcels) {
+            return null;
+        }
+
+        const parcelsVisibility: number = GameConfiguration.parcelVisibilityDistance;
 
         const candidatePosition: PositionWithDistance = Array.from(this.freeParcelsById.values())
             .filter(
@@ -391,7 +404,8 @@ export class BeliefContainer {
                     .calculatePath(this.myPosition, parcel.position)
                     ?.slice(1);
 
-                if (toParcelPath) {
+                //We are filtering to have only the parcels the agent can see
+                if (toParcelPath?.length <= parcelsVisibility) {
                     return {
                         context: { parcel },
                         position: parcel.position,

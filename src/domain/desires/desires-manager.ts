@@ -44,13 +44,6 @@ export class DesiresManager {
      */
     generateDesires(): void {
         // Clear current desires
-        //this._activeDesires = this._activeDesires.filter(desire => {
-        //    if (desire.type === DesireTypes.PICKUP_HANDOFF && desire.context?.timeToMeet > Date.now()) {
-        //        return true;
-        //    }
-//
-        //    return false;
-        //});
         this._activeDesires = [];
 
         // Generate desires based on current state
@@ -88,23 +81,32 @@ export class DesiresManager {
 
             this._activeDesires.push(putDownDesire);
         } else {
-            // Check if a handoff would be beneficial
-            const potentialHandoffPartner = this.evaluatePotentialHandoffPartners();
 
-            if (potentialHandoffPartner) {
-                // Create a PutDownHandoff desire with handoff context
-                const { agentId, meetingPosition, benefit } = potentialHandoffPartner;
-                this.generatePutDownHandoffDesire(agentId, this.beliefs.carryingParcelIds, meetingPosition, benefit);
+            if (this.handoffCordinator.hasActiveHandoff()) {
+                const activeHandoff = this.handoffCordinator.getActiveHandoff();
+
+                this.generatePutDownHandoffDesire(activeHandoff.receiverId, this.beliefs.carryingParcelIds, activeHandoff.meetingPosition);
+
             } else {
-                // Standard delivery desire without handoff
-                const deliverDesire: Desire = Desire.deliverParcel(
-                    80, // Medium-high priority
-                    deliveryPoint.position,
-                    this.beliefs.carryingParcelIds,
-                );
 
-                this._activeDesires.push(deliverDesire);
+                // Check if a handoff would be beneficial
+                const potentialHandoffPartner = this.evaluatePotentialHandoffPartners();
+
+                if (potentialHandoffPartner) {
+                    // Create a PutDownHandoff desire with handoff context
+                    const { agentId, meetingPosition, benefit } = potentialHandoffPartner;
+                    this.generatePutDownHandoffDesire(agentId, this.beliefs.carryingParcelIds, meetingPosition, benefit);
+                }
             }
+
+            // Standard delivery desire without handoff
+            const deliverDesire: Desire = Desire.deliverParcel(
+                80, // Medium-high priority
+                deliveryPoint.position,
+                this.beliefs.carryingParcelIds,
+            );
+
+            this._activeDesires.push(deliverDesire);
         }
     }
 
@@ -164,9 +166,9 @@ export class DesiresManager {
     private generatePickupDesires(): void {
 
         if (this.handoffCordinator.hasActiveHandoff()) {
+            
             const activeHandoff = this.handoffCordinator.getActiveHandoff();
             if (activeHandoff.receiverId === this.beliefs.myId) {
-                console.log("PORCO generatePickupDesires generatePickupHandoffDesire")
                 this.generatePickupHandoffDesire(
                     activeHandoff.requestId,
                     activeHandoff.initiatorId,
@@ -309,8 +311,6 @@ export class DesiresManager {
         );
 
         this._activeDesires.push(pickUpHandoffDesire);
-
-        console.log(`generatePickupHandoffDesire`);
     }
 
     generatePutDownHandoffDesire(partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number=0): void {
@@ -323,8 +323,6 @@ export class DesiresManager {
         );
 
         this._activeDesires.push(putDownHandoffDesire);
-
-        console.log(`generatePutDownHandoffDesire`);
     }
 
     /**
