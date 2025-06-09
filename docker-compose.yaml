@@ -1,6 +1,20 @@
 name: deliveroojs
 
 services:
+  # Fast Downward planner service
+  planutils-environment:
+    build:
+      context: ./planning-engine
+      dockerfile: Dockerfile
+    container_name: planutils-environment
+    ports:
+      - "6790:6789"
+    restart: unless-stopped
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
 
   25c1_1:
     image: it.unitn.deliveroojs
@@ -30,6 +44,16 @@ services:
 
     environment:
       - LEVEL=levels/25c1_3
+      - PORT=4001
+
+  25c1_4:
+    image: it.unitn.deliveroojs
+    ports:
+      - "4006:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_4
       - PORT=4001
 
   25c2_hallway:

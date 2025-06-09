@@ -7,7 +7,7 @@ import type { Sensor } from "./communication/sensor";
 import { DesiresManager } from "./desires";
 import { IntentionManager } from "./intentions";
 import type { MatchMap } from "./map";
-import type { Parcel } from "./models";
+import { type Duration, GameConfiguration, type Parcel } from "./models";
 import type { Agent } from "./models/agent";
 import type { Directions, Position } from "./models/environment";
 import { HandoffCoordinator, type HandoffRequest } from "./models/handoff-coordinator";
@@ -111,6 +111,8 @@ export class PlayerBDI {
     async start(): Promise<void> {
         this._isAlive = true;
 
+        const agentTimeout: Duration = GameConfiguration.agentTimeout;
+
         // Set up interval to log statistics periodically
         setInterval(() => {
             this._statsLogger.logStatistics();
@@ -119,7 +121,7 @@ export class PlayerBDI {
         // Set up interval to send hello messages
         setInterval(async () => {
             await this.shoutHelloMessage();
-        }, 1000);
+        }, agentTimeout.milliseconds + 1000);
 
         // Start the main loop
         await Promise.all([this.shoutHelloMessage(), this._run()]);
@@ -131,11 +133,6 @@ export class PlayerBDI {
      * @private
      */
     private setupSensorHandlers(sensor: Sensor): void {
-        // Handle position updates
-        sensor.onPlayerPositionUpdate((position: Position) => {
-            this.updatePlayerPosition(position);
-        });
-
         // Handle agent sensing
         sensor.onAgentSensing(async (agents: Agent[]) => {
             this._beliefs.queueAgentsSynchronization(agents);
@@ -147,22 +144,24 @@ export class PlayerBDI {
         });
 
         setInterval(async () => {
-            await this.messenger.sendParcelInfo(
-                MessageFactory.createParcelInfoMessage(
-                    this.playerInfo.id.toString(),
-                    this._beliefs.trustedAgentsIds,
-                    this._beliefs.freeParcels,
-                ),
-            );
+            if (this._beliefs.trustedAgents?.length) {
+                await this.messenger.sendParcelInfo(
+                    MessageFactory.createParcelInfoMessage(
+                        this.playerInfo.id.toString(),
+                        this._beliefs.trustedAgentsIds,
+                        this._beliefs.freeParcels,
+                    ),
+                );
 
-            // Share agent information with other agents
-            await this.messenger.sendAgentsInfo(
-                MessageFactory.createAgentsUpdateMessage(
-                    this.playerInfo.id.toString(),
-                    this._beliefs.trustedAgentsIds,
-                    this._beliefs.opponentAgents,
-                ),
-            );
+                // Share agent information with other agents
+                await this.messenger.sendAgentsInfo(
+                    MessageFactory.createAgentsUpdateMessage(
+                        this.playerInfo.id.toString(),
+                        this._beliefs.trustedAgentsIds,
+                        this._beliefs.opponentAgents,
+                    ),
+                );
+            }
         }, 4000);
     }
 
@@ -211,14 +210,6 @@ export class PlayerBDI {
     }
 
     /**
-     * Updates the player's position
-     * @param position The new position
-     */
-    private updatePlayerPosition(position: Position): void {
-        this._beliefs.myPosition = position;
-    }
-
-    /**
      * Sends a hello message to all agents
      * @private
      */
@@ -238,18 +229,12 @@ export class PlayerBDI {
      */
     private async _run(): Promise<void> {
         while (this._isAlive) {
-            await new Promise((resolve) => setImmediate(resolve));
-
-            if (this.playerInfo.name === "Amico2") {
-                continue;
-            }
-
             // Synchronize beliefs
             this._beliefs.synchronizeKnownAgents();
             this._beliefs.synchronizeKnownParcels();
 
             // Generate desires based on current beliefs
-            this._desiresManager.generateDesires();
+            await this._desiresManager.generateDesires();
 
             // Check if we need to execute a handoff
             if (this._handoffCoordinator.hasActiveHandoff()) {
