@@ -11,7 +11,9 @@ import { extractFirstElementsInSortedArray } from "@utils/functions";
 import { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
 import { MultiValueHashMap } from "@utils/multivaluehashmap";
-import EventEmitter from "eventemitter3";
+
+import { InternalEventManager } from "@utils/internal-event-manager";
+import { type PddlLocation, PlanningManager, type WorldState } from "@utils/planning-manager";
 
 export class BeliefContainer {
     /**
@@ -37,6 +39,12 @@ export class BeliefContainer {
      * @private
      */
     private _ownScore: number;
+
+    /**
+     * The planner manager to manage plannings via PDDL
+     * @private
+     */
+    private readonly plannerManager: PlanningManager = new PlanningManager();
 
     /**
      * @private The ID of the carried parcels (if any)
@@ -84,12 +92,6 @@ export class BeliefContainer {
     private _deliveryPointManager: DeliveryPointManager;
 
     /**
-     * An internal event emitter
-     * @private
-     */
-    private readonly _internalEventsBroken: EventEmitter = new EventEmitter();
-
-    /**
      * Map that associates a position to a set of parcels
      */
     private readonly parcelsByPosition: MultiValueHashMap<Position, Parcel> =
@@ -129,7 +131,7 @@ export class BeliefContainer {
      * The queue of parcels to be synchronized
      * @private
      */
-    private _parcelsToBeSynchronized: Parcel[] = [];
+    private _parcelsToBeSynchronized: HashSet<Parcel> = new HashSet();
 
     /**
      * The queue of agents to be synchronized
@@ -194,16 +196,20 @@ export class BeliefContainer {
         return this._ownPosition;
     }
 
-    set myPosition(position: Position) {
-        this._ownPosition = position;
-    }
-
     get myScore(): number {
         return this._ownScore;
     }
 
     get freeParcels(): Parcel[] {
         return Array.from(this.freeParcelsById.values());
+    }
+
+    get visibleFreeParcels(): Parcel[] {
+        const visibilityDistance: number = GameConfiguration.parcelVisibilityDistance;
+        return this.freeParcels.filter(
+            (parcel: Parcel) =>
+                this.myPosition.manhattanDistance(parcel.position) < visibilityDistance,
+        );
     }
 
     /**
@@ -455,6 +461,133 @@ export class BeliefContainer {
         return chosenPosition;
     }
 
+    /**
+     * Uses Fast Downward planner to find parcels worth picking up en route to a delivery
+     * @param deliveryPosition The target delivery position
+     * @param limit Optional limit on the number of parcels to return
+     * @returns Array of parcel worth picking up, with context about their value
+     */
+    async generatePickupParcelsWithPDDL(
+        deliveryPosition: Position,
+        limit?: number,
+    ): Promise<PositionWithDistance[]> {
+        // Skip if no parcels are available
+        const visibleParcels: Parcel[] = this.visibleFreeParcels;
+        if (!visibleParcels?.length) {
+            return [];
+        }
+
+        // 1. Generate PDDL domain and problem
+        // Create world state for PDDL
+
+        const nonDeliveryLocations: PddlLocation[] = Array.from(
+            new Set([
+                this.myPosition.toPddlString(),
+                ...visibleParcels.map((p) => p.position.toPddlString()),
+            ]),
+        ).map((position: string) => ({ position, isDelivery: false }) as PddlLocation);
+
+        const worldState: WorldState = {
+            agents: [],
+            myAgent: {
+                name: this.myId,
+                location: this.myPosition.toPddlString(),
+                capacity: 5,
+            },
+            packages: visibleParcels.map((p) => ({
+                name: p.id,
+                location: p.position.toPddlString(),
+                score: p.score.currentValue,
+                delivered: false,
+            })),
+            locations: [
+                ...nonDeliveryLocations,
+                { position: deliveryPosition.toPddlString(), isDelivery: true },
+            ],
+        };
+
+        // 2. Call the planner
+        let planSteps: { action: string; parameters: string[] }[];
+        try {
+            planSteps = await this.plannerManager.runPlanner(worldState);
+            if (!planSteps?.length) {
+                return [];
+            }
+        } catch (error) {
+            return [];
+        }
+
+        // 5. Extract pickup actions from the parsed plan
+        const pickupActions: { parcelId: string; pickupOrder: number; action: string }[] = [];
+        let pickupOrder = 0;
+
+        for (const step of planSteps) {
+            // Check if this is a pickup action (either pick-up or pick-up-any)
+            if (step.action === "pick-up") {
+                // Extract parameters: agent, parcel, location
+                if (step.parameters.length >= 2) {
+                    const [_, parcelId] = step.parameters;
+
+                    // Add to pickup actions
+                    pickupActions.push({
+                        parcelId,
+                        pickupOrder: pickupOrder++,
+                        action: step.action,
+                    });
+                }
+            }
+        }
+
+        // 6. Convert to PositionWithDistance objects with context
+        const result: PositionWithDistance[] = [];
+        for (const action of pickupActions) {
+            // Match parcel by ID (case-insensitive)
+            const parcel = visibleParcels.find(
+                (p) => p.id.toLowerCase() === action.parcelId.toLowerCase(),
+            );
+
+            if (parcel) {
+                // Calculate the path to parcel
+                const toParcelPath: Position[] = this.map.calculatePath(
+                    this.myPosition,
+                    parcel.position,
+                );
+                const distance: number = toParcelPath ? toParcelPath.length : 0;
+
+                // Calculate net benefit (score minus distance cost)
+                const deliveryDistance =
+                    this.map.calculatePath(parcel.position, deliveryPosition)?.length || 0;
+                const totalDistance = distance + deliveryDistance;
+                const distanceCost = totalDistance * GameConfiguration.moveScoreCost;
+
+                // Prioritize regular pick-up over pick-up-any
+                const actionBonus = action.action === "pick-up" ? 10 : 0;
+                const netBenefit =
+                    parcel.score.currentValue - distanceCost + actionBonus - action.pickupOrder * 5;
+
+                // Only include if net benefit is positive
+                if (netBenefit > 0) {
+                    result.push({
+                        position: parcel.position,
+                        distance,
+                        context: {
+                            parcel,
+                            pickupOrder: action.pickupOrder,
+                            netBenefit,
+                            action: action.action,
+                        },
+                    });
+                }
+            }
+        }
+
+        // Sort by pickup order (the order in the plan)
+        const sortedResult = result.sort((a, b) => a.context.pickupOrder - b.context.pickupOrder);
+
+        // Limit the number of results if specified
+        return limit ? sortedResult.slice(0, limit) : sortedResult;
+    }
+
     findBestExplorationSite(): Position {
         // Only consider spawn tiles as potential exploration targets
         const tilesToExplore: Position[] = this._assignedExplorationSector?.length
@@ -477,15 +610,18 @@ export class BeliefContainer {
 
         // If we have unexplored tiles outside visibility, prioritize those
         if (unexploredTiles.length > 0) {
-            return unexploredTiles
-                .map((position: Position) => {
-                    const distance = this._ownPosition.manhattanDistance(position);
-                    // Lower distance is better for unexplored tiles
-                    return { position, distance } as PositionWithDistance;
-                })
-                .sort((d1, d2) => d1.distance - d2.distance) // Sort by closest first
-                .map((pos) => pos.position)
-                .shift();
+            return (
+                unexploredTiles
+                    .map((position: Position) => {
+                        const distance = this._ownPosition.manhattanDistance(position);
+                        // Lower distance is better for unexplored tiles
+                        return { position, distance } as PositionWithDistance;
+                    })
+                    // Sorting by farest tile
+                    .sort((d1, d2) => d2.distance - d1.distance)
+                    .map((pos) => pos.position)
+                    .shift()
+            );
         }
 
         // If no unexplored tiles outside visibility, try any spawn tile outside visibility
@@ -520,7 +656,7 @@ export class BeliefContainer {
 
     synchronizeMyPosition(position: Position): void {
         this._ownPosition = position;
-        this._internalEventsBroken.emit("own-position-changed", position);
+        InternalEventManager.emit("own-position-changed", position);
 
         //We can update the map with the visited spawning tiles
         this.visitedTiles.update(position, (count: number) => (count ?? 0) + 1);
@@ -608,12 +744,12 @@ export class BeliefContainer {
     }
 
     queueParcelsSynchronization(parcels: Parcel[]): void {
-        this._parcelsToBeSynchronized.push(...parcels);
+        this._parcelsToBeSynchronized.addAll(parcels);
     }
 
     synchronizeKnownParcels(): void {
-        const reachableParcels: Parcel[] = this._parcelsToBeSynchronized.filter((parcel: Parcel) =>
-            this.map.isReachable(this._ownPosition, parcel.position),
+        const reachableParcels: Parcel[] = this._parcelsToBeSynchronized.all.filter(
+            (parcel: Parcel) => this.map.isReachable(this._ownPosition, parcel.position),
         );
 
         const reachableParcelIds: Set<string> = new Set(
@@ -683,7 +819,7 @@ export class BeliefContainer {
         }
 
         if (newFreeParcels.length || noLongerFreeParcels.length || changedPositionParcels.length) {
-            this._internalEventsBroken.emit("parcels-changed", {
+            InternalEventManager.emit("parcels:synchronized", {
                 newParcels: newFreeParcels,
                 takenParcels: noLongerFreeParcels,
                 movedParcels: changedPositionParcels,
@@ -691,7 +827,7 @@ export class BeliefContainer {
         }
 
         if (expiredParcels.length) {
-            this._internalEventsBroken.emit("parcels-expired", { expiredParcels });
+            InternalEventManager.emit("parcels:expired", { expiredParcels });
         }
 
         //Cleaning disabled delivery points
@@ -702,7 +838,7 @@ export class BeliefContainer {
             (_, value: DecayingValue) => value.currentValue <= 0,
         );
 
-        this._parcelsToBeSynchronized = [];
+        this._parcelsToBeSynchronized.clear();
     }
 
     calculateMovingPath(to: Position, positionsToAvoid: Position[] = []): Position[] {
@@ -757,11 +893,6 @@ export class BeliefContainer {
     }
 
     updateCarriedParcelsAfterPickup(pickedParcelIds: Set<string>) {
-        const pickedUpParcels: HashSet<Parcel> = this.parcelsByPosition.get(this.myPosition);
-        if (!pickedUpParcels) {
-            return;
-        }
-
         for (const parcelId of pickedParcelIds) {
             const parcel: Parcel = this.freeParcelsById.get(parcelId);
             if (parcel) {
@@ -863,7 +994,7 @@ export class BeliefContainer {
             }
         }
 
-        // Updating the agents density
+        // Updating the agent density
         this._agentsDensityOnTile.clear();
 
         // Collect opponent positions for delivery point congestion tracking
@@ -1014,7 +1145,7 @@ export class BeliefContainer {
         return {
             position,
             // Higher score is better: prefer less visited tiles that are closer
-            score: 1 / (visits + 1) - distance * 0.05 - agentsDensityMalus + randomFactor,
+            score: 1 / (visits + 1) + distance * 0.05 - agentsDensityMalus + randomFactor,
         };
     }
 }

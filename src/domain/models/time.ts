@@ -58,6 +58,15 @@ export class Duration {
     }
 
     /**
+     * Creates an instance from a seconds amount
+     * @param seconds  the duration in seconds
+     * @param isInfinite    TRUE if the duration is infinite
+     */
+    static fromSeconds(seconds: number, isInfinite = false): Duration {
+        return new Duration(seconds * 1000, isInfinite);
+    }
+
+    /**
      * Creates an instance from a milliseconds amount
      * @param milliseconds  the duration in milliseconds
      * @param isInfinite    TRUE if the duration is infinite

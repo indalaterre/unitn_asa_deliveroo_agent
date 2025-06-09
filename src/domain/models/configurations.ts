@@ -4,6 +4,7 @@ export type EnvironmentConfiguration = {
     readonly parcelRewardMean: number;
     readonly parcelRewardVariance: number;
     readonly parcelGenerationInterval: Duration;
+    readonly parcelAvgReward: number;
     readonly parcelDecayingInterval: Duration;
     readonly movementDuration: Duration;
     readonly movementSteps: number;
@@ -40,6 +41,11 @@ export interface AgentConfiguration {
      * Authentication token for deliveroo.js api
      */
     token: string;
+
+    /**
+     * TRUE if PDDL should be preferred for designed tasks
+     */
+    usePddl: boolean;
 
     /**
      * The total score the agent is allowed to carry at the same time
@@ -79,12 +85,20 @@ export class GameConfiguration {
         GameConfiguration._instance = new GameConfiguration(agentConfiguration, envConfiguration);
     }
 
+    static get usePddl(): boolean {
+        return GameConfiguration._instance._agentConfiguration.usePddl;
+    }
+
     static get movementDuration(): Duration {
         return GameConfiguration._instance._environmentConfiguration.movementDuration;
     }
 
     static get parcelVisibilityDistance(): number {
         return GameConfiguration._instance._environmentConfiguration.parcelVisibilityDistance;
+    }
+
+    static get parcelAvgReward(): number {
+        return GameConfiguration._instance._environmentConfiguration.parcelAvgReward;
     }
 
     static get parcelDecayingInterval(): Duration {

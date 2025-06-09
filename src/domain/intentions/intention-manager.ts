@@ -1,13 +1,13 @@
 import type { BeliefContainer } from "@domain/beliefs";
 import type { Actuator } from "@domain/communication";
-import { type Desire, DesireTypes, type DesiresManager } from "@domain/desires";
+import { type Desire, DesirePriorities, DesireTypes, type DesiresManager } from "@domain/desires";
 import { type Agent, GameConfiguration, type Parcel } from "@domain/models";
 import type { Directions, Position } from "@domain/models/environment";
 import type { HandoffCoordinator, HandoffRequest } from "@domain/models/handoff-coordinator";
 import { Intention, IntentionTypes } from "@domain/models/intention";
-import { IntentionQueue } from "@domain/models/intention-queue";
+import { PriorityQueue } from "@domain/models/priority-queue";
 import type { StatisticsLogger } from "@domain/models/statistics-logger";
-import { EventEmitter } from "eventemitter3";
+import { InternalEventManager } from "@utils/internal-event-manager";
 
 /**
  * Manages the agent's intentions
@@ -18,19 +18,22 @@ export class IntentionManager {
      * Queue of intentions ordered by priority
      * @private
      */
-    private _intentionQueue: IntentionQueue = new IntentionQueue();
+    private _intentionQueue: PriorityQueue<IntentionTypes, Intention> = new PriorityQueue(
+        (a, b) => {
+            const prioritySorting: number = b.priority - a.priority;
+            if (prioritySorting !== 0) {
+                return prioritySorting;
+            }
+
+            return a.element.type - b.element.type;
+        },
+    );
 
     /**
      * The current executing intention
      * @private
      */
     private _currentIntention: Intention | null = null;
-
-    /**
-     * Event emitter for notifying changes to intentions
-     * @private
-     */
-    private readonly _eventEmitter: EventEmitter = new EventEmitter();
 
     /**
      * Creates a new intention manager
@@ -48,12 +51,12 @@ export class IntentionManager {
         private readonly handoffCoordinator: HandoffCoordinator,
     ) {
         // Listen for desire updates
-        this.desiresManager.on("desires:updated", async () => {
+        InternalEventManager.on("desires:updated", async () => {
             await this.generateIntentionsFromDesires();
         });
 
         // Listen for desire failures
-        this.desiresManager.on("desire:failed", (desire: Desire) => {
+        InternalEventManager.on("desire:failed", (desire: Desire) => {
             this.handleDesireFailure(desire);
         });
     }
@@ -72,21 +75,21 @@ export class IntentionManager {
     async processIntentions(): Promise<void> {
         if (!this._currentIntention || this.shouldGiveUpExploration()) {
             this._currentIntention = this._intentionQueue.poll();
+            this.syncIntentionWithCurrentState(this.currentIntention);
         }
 
         // Execute current intention if available
-        if (this._currentIntention) {
+        if (this.currentIntention) {
             // Check if the intention is still valid
-            if (!this.isIntentionValid(this._currentIntention)) {
+            if (!this.isIntentionValid(this.currentIntention)) {
                 this._currentIntention = null;
                 return;
             }
 
-            console.log(`Current intention: ${this._currentIntention.toString()}`);
+            console.log(`Current intention: ${this.currentIntention.toString()}`);
 
             // Execute the intention
-            const success: boolean = await this.executeIntention(this._currentIntention);
-
+            const success: boolean = await this.executeIntention(this.currentIntention);
             if (!success) {
                 // Record failure
                 this._currentIntention.addFailure();
@@ -123,35 +126,33 @@ export class IntentionManager {
      * Generates intentions based on current desires
      */
     async generateIntentionsFromDesires(): Promise<void> {
-        // Clear existing intentions
-        this._intentionQueue.clear();
-
         // Get all desires
-        const desires: Desire[] = this.desiresManager.getAllRankedDesires();
+        const desire: Desire = this.desiresManager.getTopDesire();
+        if (!desire) {
+            return;
+        }
 
         // Convert desires to intentions
-        for (const desire of desires) {
-            switch (desire.type) {
-                case DesireTypes.DELIVER_PARCEL:
-                    await this.generateDeliverIntention(desire);
-                    break;
+        switch (desire.type) {
+            case DesireTypes.DELIVER_PARCEL:
+                await this.generateDeliverIntention(desire);
+                break;
 
-                case DesireTypes.PICKUP_PARCEL:
-                    this.generatePickupIntention(desire);
-                    break;
+            case DesireTypes.PICKUP_PARCEL:
+                this.generatePickupIntention(desire);
+                break;
 
-                case DesireTypes.PUT_DOWN_PARCEL:
-                    this.generatePutDownIntention(desire);
-                    break;
+            case DesireTypes.PUT_DOWN_PARCEL:
+                this.generatePutDownIntention(desire);
+                break;
 
-                case DesireTypes.EXPLORE_ENVIRONMENT:
-                    this.generateExploreIntention(desire);
-                    break;
-            }
+            case DesireTypes.EXPLORE_ENVIRONMENT:
+                this.generateExploreIntention(desire);
+                break;
         }
 
         // Emit event that intentions have been updated
-        this._eventEmitter.emit("intentions:updated", this._intentionQueue.toArray());
+        InternalEventManager.emit("intentions:updated", this._intentionQueue.toArray());
     }
 
     /**
@@ -172,7 +173,8 @@ export class IntentionManager {
                     // Fall back to regular delivery if partner not found
                     const regularIntention: Intention = Intention.deliver(desire.position);
                     this.processMovingIntention(regularIntention, desire);
-                    this._intentionQueue.add(regularIntention, desire.priority);
+
+                    this.addIntentionToQueue(regularIntention, desire.priority);
                     return;
                 }
 
@@ -185,7 +187,8 @@ export class IntentionManager {
                     // Fall back to regular delivery if path calculation fails
                     const regularIntention: Intention = Intention.deliver(desire.position);
                     this.processMovingIntention(regularIntention, desire);
-                    this._intentionQueue.add(regularIntention, desire.priority);
+
+                    this.addIntentionToQueue(regularIntention, desire.priority);
                     return;
                 }
 
@@ -219,13 +222,13 @@ export class IntentionManager {
                 partnerId: partnerId,
             };
 
-            this._intentionQueue.add(intention, desire.priority);
+            this.addIntentionToQueue(intention, desire.priority);
         } else {
             // Regular delivery without handoff
             const intention: Intention = Intention.deliver(desire.position);
             this.processMovingIntention(intention, desire);
 
-            this._intentionQueue.add(intention, desire.priority);
+            this.addIntentionToQueue(intention, desire.priority);
         }
     }
 
@@ -235,19 +238,29 @@ export class IntentionManager {
      * @private
      */
     private generatePickupIntention(desire: Desire): void {
-        // If already at the position, create a PICK_UP intention
-        if (desire.position.equals(this.beliefs.myPosition)) {
-            const intention = Intention.pickUp(desire.position);
-            intention.context = desire.context;
+        const parcelId: string = desire?.context?.parcelId;
+        if (!parcelId) {
+            throw new Error("PICKUP desires requires a parcel id to be picked up");
+        }
 
-            this._intentionQueue.add(intention, desire.priority);
-        } else {
-            // Otherwise, create a MOVE intention
+        if (this.beliefs.carryingParcelIds.includes(parcelId)) {
+            // The agent as already this parcel. No need to re-pick it up
+            return;
+        }
+
+        //If it's not a urgent pick-up move to that position
+        if (desire.priority !== DesirePriorities.PRIORITY_PICKUP) {
             const intention: Intention = Intention.move(desire.position);
             this.processMovingIntention(intention, desire);
-
-            this._intentionQueue.add(intention, desire.priority);
+            this.addIntentionToQueue(intention, desire.priority);
         }
+
+        // Otherwise, create a MOVE intention
+
+        const pickUp: Intention = Intention.pickUp(desire.position);
+        pickUp.context = desire.context;
+
+        this.addIntentionToQueue(pickUp, desire.priority);
     }
 
     /**
@@ -256,10 +269,10 @@ export class IntentionManager {
      * @private
      */
     private generatePutDownIntention(desire: Desire): void {
-        const intention = Intention.putDown(desire.position);
+        const intention: Intention = Intention.putDown(desire.position);
         intention.context = desire.context;
 
-        this._intentionQueue.add(intention, desire.priority);
+        this.addIntentionToQueue(intention, desire.priority);
     }
 
     // Handoff is now handled as part of the DELIVER_PARCEL intention generation
@@ -270,10 +283,16 @@ export class IntentionManager {
      * @private
      */
     private generateExploreIntention(desire: Desire): void {
+        if (
+            this.currentIntention?.type === IntentionTypes.EXPLORE ||
+            this._intentionQueue.hasElementOfType(IntentionTypes.EXPLORE)
+        )
+            return;
+
         const intention: Intention = Intention.explore(desire.position);
         this.processMovingIntention(intention, desire);
 
-        this._intentionQueue.add(intention, desire.priority);
+        this.addIntentionToQueue(intention, desire.priority);
     }
 
     /**
@@ -368,6 +387,12 @@ export class IntentionManager {
             case IntentionTypes.MOVE:
             case IntentionTypes.DELIVER:
             case IntentionTypes.EXPLORE:
+                const remainingPath = intention.context.path;
+                if (!remainingPath?.length) {
+                    const isMyPosition = this.beliefs.myPosition.equals(intention.position);
+                    const a = 1;
+                }
+
                 // These intentions are complete when we reach the target position
                 return this.beliefs.myPosition.equals(intention.position);
 
@@ -489,19 +514,13 @@ export class IntentionManager {
                 return await this.moveTowards(intention);
 
             case IntentionTypes.PICK_UP:
-                // Execute pickup action
-                const pickupResult: Set<string> = await this.actuator.pickup();
+                return await this.executePickup();
 
-                if (pickupResult.size === 0) {
-                    console.log("Failed to pick up parcels during handoff");
+            case IntentionTypes.PUT_DOWN:
+                if (!this.beliefs.isAgentOnDeliveryTile()) {
                     return Promise.resolve(false);
                 }
 
-                // Update our beliefs
-                this.beliefs.updateCarriedParcelsAfterPickup(pickupResult);
-                return Promise.resolve(true);
-
-            case IntentionTypes.PUT_DOWN:
                 // Execute put-down action
                 const carriedParcels: Parcel[] = this.beliefs.carriedParcels;
                 const parcelsToDrop: string[] = this.beliefs.carryingParcelIds;
@@ -547,6 +566,18 @@ export class IntentionManager {
             return true;
         }
 
+        if (!intention.context?.path?.length) {
+            const a = 1;
+        }
+
+        if (
+            this.beliefs.freeParcels.filter((parcel) =>
+                parcel.position.equals(this.beliefs.myPosition),
+            ).length
+        ) {
+            await this.executePickup();
+        }
+
         if (this.beliefs.isPositionOccupied(nextPosition)) {
             console.log(`Position ${nextPosition.toString()} is occupied by another agent`);
 
@@ -566,15 +597,10 @@ export class IntentionManager {
             };
         }
 
-        // If already at target, return success
-        if (this.beliefs.myPosition.equals(nextPosition)) {
-            return true;
-        }
-
         const nextDirection: Directions = this.beliefs.myPosition.getDirection(nextPosition);
         const successfulMove: boolean = await this.actuator.move(nextDirection);
         if (successfulMove) {
-            this.beliefs.myPosition = nextPosition;
+            this.beliefs.synchronizeMyPosition(nextPosition);
         }
 
         return successfulMove;
@@ -613,7 +639,7 @@ export class IntentionManager {
             }
         }
 
-        // If current intention is related to this desire, reset it
+        // If the current intention is related to this desire, reset it
         if (
             this._currentIntention &&
             desire.position?.equals(this._currentIntention.position) &&
@@ -623,15 +649,6 @@ export class IntentionManager {
         }
     }
 
-    /**
-     * Registers an event listener
-     * @param event The event to listen for
-     * @param listener The listener function
-     */
-    on(event: string, listener: (...args: any[]) => void): void {
-        this._eventEmitter.on(event, listener);
-    }
-
     private processMovingIntention(intention: Intention, desire: Desire): boolean {
         const pathToPosition: Position[] = this.beliefs.calculateMovingPath(
             desire.position,
@@ -639,7 +656,6 @@ export class IntentionManager {
         );
         if (!pathToPosition) {
             return false;
-            //throw new Error("EXPLORE failed: Could not calculate path to position");
         }
 
         intention.context = {
@@ -653,18 +669,55 @@ export class IntentionManager {
         return true;
     }
 
+    private syncIntentionWithCurrentState(intention: Intention): void {
+        if (!Intention.MOVING_INTENTIONS.includes(intention?.type)) return;
+
+        const pathToPosition: Position[] = this.beliefs.calculateMovingPath(
+            intention.position,
+            this.beliefs.getOccupiedPositions(),
+        );
+
+        if (!pathToPosition) {
+            return;
+        }
+
+        intention.context = {
+            ...intention.context,
+            from: this.beliefs.myPosition,
+            to: intention.position,
+            //Removing the first position because it's the current one
+            path: pathToPosition.slice(1),
+        };
+    }
+
     private shouldGiveUpExploration(): boolean {
         // Check if there are higher priority intentions in the queue
-        if (!this._intentionQueue.isEmpty()) {
+        if (!this._intentionQueue.isEmpty() && this.currentIntention?.isExplore) {
             const nextIntention: Intention = this._intentionQueue.peek();
-            if (
-                this.currentIntention?.type === IntentionTypes.EXPLORE &&
-                nextIntention?.type !== IntentionTypes.EXPLORE
-            ) {
-                return true;
-            }
+            return !nextIntention?.isExplore;
         }
 
         return false;
+    }
+
+    private addIntentionToQueue(intention: Intention, priority: number): void {
+        if (this.currentIntention?.equals(intention)) {
+            return;
+        }
+
+        this._intentionQueue.add(intention, priority);
+    }
+
+    private async executePickup(): Promise<boolean> {
+        const pickupResult: Set<string> = await this.actuator.pickup();
+
+        if (pickupResult.size === 0) {
+            console.log("Failed to pick up parcels during handoff");
+            return Promise.resolve(false);
+        }
+
+        // Update our beliefs
+        this.beliefs.updateCarriedParcelsAfterPickup(pickupResult);
+        return Promise.resolve(true);
     }
 }

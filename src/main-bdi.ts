@@ -18,18 +18,21 @@ function getConfiguration(): AgentConfiguration {
     const options = [
         { name: "host", type: String },
         { name: "token", type: String },
+        { name: "use-pddl", type: Boolean },
+        { name: "agent-name", type: String },
         { name: "public-key", type: String },
         { name: "private-key", type: String },
         { name: "hello-interval", type: Number },
         { name: "max-last-heard", type: Number },
         { name: "start-iterations", type: Number },
-        { name: "num-promising-positions", type: Number },
-        { name: "agent-name", type: String },
-        { name: "agents-density-radius", type: Number },
+        { name: "planner-docker-image", type: String },
         { name: "max-carrying-parcels", type: Number },
+        { name: "agents-density-radius", type: Number },
+        { name: "num-promising-positions", type: Number },
     ];
 
     const defaultValues = new Map<string, string | number | boolean>();
+    defaultValues.set("use-pddl", false);
     defaultValues.set("hello-interval", 2000);
     defaultValues.set("max-last-heard", 6000);
     defaultValues.set("start-iterations", 10);
@@ -39,6 +42,7 @@ function getConfiguration(): AgentConfiguration {
     defaultValues.set("agent-name", "");
     defaultValues.set("agents-density-radius", 4);
     defaultValues.set("max-carrying-parcels", 6);
+    defaultValues.set("planner-docker-image", "it.unitn.optic.planner:latest");
 
     // first check if the corresponding environment variables are set
     const config = new Map<string, string | number | boolean>();
@@ -51,7 +55,7 @@ function getConfiguration(): AgentConfiguration {
 
     dotenv.config();
 
-    const agentName = cliArgs["agent-name"] ?? "main"; // get "second", "third", etc.
+    const agentName = cliArgs["agent-name"] ?? "main"; // get 'second', 'third', etc.
     // --- Construct env file path ---
     const envPath = path.resolve(__dirname, "..", `.player.env.${agentName}`);
 
@@ -74,10 +78,14 @@ function getConfiguration(): AgentConfiguration {
     return {
         host: config.get("host") as string,
         token: config.get("token") as string,
+        usePddl: config.get("use-pddl") as boolean,
+        plannerDockerImage: config.get("planner-docker-image") as string,
+
         cryptoKeyPaths: {
             publicPath: config.get("public-key") as string,
             privatePath: config.get("private-key") as string,
         } as CryptoConfiguration,
+
         maxCarryingParcels: config.get("max-carrying-parcels") as number,
         agentsDensityRadius: config.get("agents-density-radius") as number,
     } as AgentConfiguration;

@@ -229,18 +229,12 @@ export class PlayerBDI {
      */
     private async _run(): Promise<void> {
         while (this._isAlive) {
-            await new Promise((resolve) => setImmediate(resolve));
-
-            if (this.playerInfo.name === "Amico2") {
-                continue;
-            }
-
             // Synchronize beliefs
             this._beliefs.synchronizeKnownAgents();
             this._beliefs.synchronizeKnownParcels();
 
             // Generate desires based on current beliefs
-            this._desiresManager.generateDesires();
+            await this._desiresManager.generateDesires();
 
             // Check if we need to execute a handoff
             if (this._handoffCoordinator.hasActiveHandoff()) {
