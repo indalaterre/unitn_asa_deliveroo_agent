@@ -1,5 +1,5 @@
-import { Duration, GameConfiguration } from "@domain/models";
 import axios from "axios";
+import { Duration, GameConfiguration } from "@domain/models";
 
 export type Agent = {
     name: string;
@@ -65,6 +65,8 @@ export class PlanningManager {
             return [];
         }
 
+        const plannerHost: string = GameConfiguration.plannerHost;
+
         this.planningSemaphore = true;
 
         const domainContent: string = this.generateDomainPDDL();
@@ -79,7 +81,7 @@ export class PlanningManager {
 
             // Make the HTTP request to the planning service
             const response = await axios.post(
-                `http://localhost:6790/package/${this.PLANNER_NAME}/solve`,
+                `${plannerHost}/package/${this.PLANNER_NAME}/solve`,
                 payload,
             );
 
@@ -95,9 +97,6 @@ export class PlanningManager {
                     response.data.stdout.includes("No relaxed solution") ||
                     response.data.stdout.includes("Completely explored state space -- no solution")
                 ) {
-                    console.warn(
-                        "Fast Downward found the problem unsolvable. Check your PDDL domain and problem definitions.",
-                    );
                     // Return a special marker for unsolvable problems
                     result = "UNSOLVABLE";
                 }
@@ -307,16 +306,9 @@ export class PlanningManager {
             .map((p) => `(available ${PlanningManager.sanitizeName(p.name)})`)
             .join("\n    ");
 
-        const deliveryLocation: PddlLocation[] = state.locations.filter(
-            (location: PddlLocation) => location.isDelivery,
-        );
-        if (!deliveryLocation?.length) {
-            throw new Error("Planning must have a delivery location");
-        }
+        const serializedDeliveries: Set<string> = this.setupDeliveryLocations(state);
 
-        const isDeliveryPredicated = `(is-delivery ${PlanningManager.sanitizeName(deliveryLocation[0].position)})`;
-
-        const moveScoreCost = GameConfiguration.moveScoreCost;
+        const moveScoreCost: number = GameConfiguration.moveScoreCost;
         const differences: Set<string> = new Set<string>();
         const distanceValues: any[] = [];
         // Calculate Manhattan distance (assuming locations are in format 'x,y')
@@ -379,7 +371,7 @@ export class PlanningManager {
             atAgents,
             atPkgs,
             availablePackages,
-            isDeliveryPredicated,
+            Array.from(serializedDeliveries).join("\n    "),
             Array.from(distancesPredicates).join("\n    "),
             differencesPredicates,
             scoresPredicates,
@@ -417,10 +409,26 @@ export class PlanningManager {
     (has-delivered ${agentObjs})
     (= (carrying-packages) 0))
   )
-  ;; FastDownward does not support maximization problems. We need to invert all the scores
   (:metric minimize (total-cost)))
 )
 `;
+    }
+
+    private setupDeliveryLocations(state: WorldState) {
+        const deliveryLocation: PddlLocation[] = state.locations.filter(
+            (location: PddlLocation) => location.isDelivery,
+        );
+        if (!deliveryLocation?.length) {
+            throw new Error("Planning must have a delivery location");
+        }
+
+        const serializedDeliveries: Set<string> = new Set<string>();
+        for (const delivery of deliveryLocation) {
+            serializedDeliveries.add(
+                `(is-delivery ${PlanningManager.sanitizeName(delivery.position)})`,
+            );
+        }
+        return serializedDeliveries;
     }
 
     private static sanitizeName(name: string): string {

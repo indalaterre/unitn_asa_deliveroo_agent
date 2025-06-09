@@ -3,6 +3,22 @@
 \usepackage{amsmath,amsfonts}
 \usepackage{graphicx}
 \usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\usepackage{listings}
+\lstdefinelanguage{PDDL}{
+	morekeywords={define,domain,problem,:domain,:init,:goal,:action,:parameters,:precondition,:effect,:objects,:predicates,:functions,:types,:requirements,:metric},
+	sensitive=false,
+	morecomment=[l]{;},
+	morestring=[b]",
+}
+\lstset{
+	language=PDDL,
+	basicstyle=\ttfamily\small,
+	breaklines=true,
+	columns=flexible,
+	frame=single,
+	captionpos=b
+}
+
 \large
 
 \title{A BDI Agent for Pickup-and-Delivery Tasks in Dynamic Environments}
@@ -157,7 +173,8 @@ Over time, the agent updates its beliefs to reflect changing or discovered infor
 	
 	\item \textbf{Opponent positions:} When visible, opponents’ positions are recorded. These beliefs help avoid conflicts (e.g., when racing to the same parcel) or to identify blocked routes.
 	
-	\item \textbf{Ally intentions (collaborative mode):} In team scenarios, allies may share their current goals, planned paths, or discovered parcels. These beliefs are integrated to coordinate pickup strategies and reduce redundancy.
+	\item \textbf{Ally intentions (collaborative mode):} In team scenarios, allies may share information about discovered parcels and opponents. These shared beliefs are integrated to coordinate pickup strategies and reduce redundancy. Special mention goes to the \textbf{Hand-off} protocol, which facilitates collaboration in cases of blocked paths, as well as the map \textbf{exploration split} strategy to optimize area coverage.
+
 	
 	\item \textbf{Exploration state:} The agent keeps track of visited and unvisited tiles, allowing it to prioritize unexplored areas when no known parcels are available.
 \end{itemize}
@@ -193,31 +210,13 @@ where:
 
 The agent maintains a priority queue of candidate tiles ranked by $S(p)$ and selects the top-scoring tile for exploration. This mechanism allows for efficient coverage of the map and adapts to both teammate activity and environmental congestion.
 
-\section{Desires}
+%! Desires subsection
+\input{sections/desires}
 
-Desires represent the goals that the agent might pursue, based on its current beliefs. In our system, each desire is a structured object defined by a type, priority value, optional target position, and additional contextual information. Desires are generated dynamically in each BDI reasoning cycle and are later filtered to determine which intention(s) to commit to.
+%! Intentions subsection
+\input{sections/intentions}
 
-\subsection{Desire Representation}
-
-Each desire belongs to one of several predefined types, formalized in the \texttt{DesireTypes} enumeration:
-
-\begin{itemize}
-	\item \texttt{DELIVER\_PARCEL}: Bring one or more carried parcels to the delivery zone,
-	\item \texttt{PICKUP\_PARCEL}: Navigate to a known parcel and pick it up,
-	\item \texttt{EXPLORE\_ENVIRONMENT}: Investigate unexplored spawn tiles,
-	\item \texttt{PUT\_DOWN\_PARCEL}: Drop parcels on the delivery point (e.g., after a handoff),
-	\item \texttt{PICKUP\_HANDOFF}: Receive a parcel from another agent (handled implicitly).
-\end{itemize}
-
-Each desire is also associated with a numeric priority from the \texttt{DesirePriorities} enumeration. These priorities determine the desirability of a goal and influence which intentions are selected. Examples include:
-
-\begin{itemize}
-	\item \texttt{PRIORITY\_PICKUP} = 100 (e.g., urgent parcel pickup),
-	\item \texttt{PICKUP} = 80 (standard pickups),
-	\item \texttt{EXPLORATION} = 50 (spawn tile exploration).
-\end{itemize}
-
-Each BDI cycle triggers a regeneration of the desire set. As new parcels are discovered, agent roles evolve, or tiles are explored, old desires are discarded and new ones are created. This dynamic refresh allows the agent to stay responsive and adaptive to environmental changes.
-
+%! Experimental results subsection
+\input{sections/experimental-results}
 
 \end{document}

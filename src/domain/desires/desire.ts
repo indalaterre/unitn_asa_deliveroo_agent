@@ -108,7 +108,7 @@ export class Desire extends AbstractHashable implements Hashable {
      * @returns TRUE if the desire is of type "EXPLORATION"
      */
     get isExplore(): boolean {
-        return this.type === DesireTypes.EXPLORE_ENVIRONMENT
+        return this.type === DesireTypes.EXPLORE_ENVIRONMENT;
     }
 
     /**

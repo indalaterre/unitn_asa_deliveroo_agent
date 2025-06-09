@@ -49,7 +49,7 @@ export class DesiresManager {
             this.generatePickupDesires();
         }
 
-        this.generateExplorationDesires();
+        //this.generateExplorationDesires();
         InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
     }
 
@@ -71,8 +71,8 @@ export class DesiresManager {
 
         // If already at delivery point, generate PUT_DOWN desire
         if (
-            this.beliefs.carryingParcelIds?.length
-            && deliveryPoint.position.equals(this.beliefs.myPosition)
+            this.beliefs.carryingParcelIds?.length &&
+            deliveryPoint.position.equals(this.beliefs.myPosition)
         ) {
             const putDownDesire = Desire.putDownParcel(
                 DesirePriorities.PRIORITY_DELIVERY, // High priority
@@ -255,15 +255,11 @@ export class DesiresManager {
 
         // Use Fast Downward planner to find parcels worth picking up en route to delivery
         const parcelsToPickup: PositionWithDistance[] =
-            await this.beliefs.generatePickupParcelsWithPDDL(bestDelivery.position);
+            await this.beliefs.generatePickupParcelsWithPDDL();
 
         // If no parcels found, return
         if (!parcelsToPickup?.length) {
             return;
-        }
-
-        if (parcelsToPickup.length > 1) {
-            const a = 1;
         }
 
         // Generate desires for each parcel, with priority based on their order in the plan
@@ -309,7 +305,7 @@ export class DesiresManager {
      * Generates desires to explore the environment
      * @private
      */
-    private generateExplorationDesires(): void {
+    generateExplorationDesires(): void {
         if (this._activeDesires.hasElementOfType(DesireTypes.EXPLORE_ENVIRONMENT)) {
             return;
         }
@@ -333,6 +329,7 @@ export class DesiresManager {
             );
 
             this._activeDesires.add(exploreDesire, exploreDesire.priority);
+            InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
         }
     }
 
@@ -366,5 +363,4 @@ export class DesiresManager {
     }
 
     generateHandoffDesire(requestId: string, meetingPosition: Position): void {}
-
 }

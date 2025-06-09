@@ -50,26 +50,6 @@ export class Tile implements Hashable {
     public hashCode(): string {
         return this.position?.hashCode();
     }
-
-    public pddlSerialize(): string {
-        return `tile_${this.position.toPddlString()}`;
-    }
-
-    static pddlDeserialize(serializedTile: string): Tile {
-        let result = null;
-
-        try {
-            const splits = serializedTile.split("_");
-            const row = Number.parseInt(splits[1]);
-            const column = Number.parseInt(splits[2]);
-
-            result = new Tile(false, false, false, new Position(row, column));
-        } catch {
-            // TODO: do something ???
-        }
-
-        return result;
-    }
 }
 
 /**
@@ -156,8 +136,24 @@ export class Position implements Hashable {
         return `X: ${this.row}; Y: ${this.column}`;
     }
 
+    /**
+     * Serializes the position into a PDDL string
+     */
     public toPddlString(): string {
         return `${this.row}_${this.column}`;
+    }
+
+    /**
+     * Transform a PDDL position string into an object
+     * @param pddlPosition  the string to convert
+     */
+    static fromPddlString(pddlPosition: string): Position {
+        if (!pddlPosition) return null;
+
+        const positionParts: string[] = pddlPosition.split("_");
+        return positionParts?.length < 2
+            ? null
+            : new Position(Number(positionParts[0]), Number(positionParts[1]));
     }
 
     /**

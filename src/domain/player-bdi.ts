@@ -1,4 +1,5 @@
 import type { ClusteredTiles } from "@utils/clustering-worker";
+import { InternalEventManager } from "@utils/internal-event-manager";
 import { BeliefContainer } from "./beliefs";
 import type { Actuator } from "./communication";
 import { MessageFactory } from "./communication/message-factory";
@@ -123,6 +124,10 @@ export class PlayerBDI {
             await this.shoutHelloMessage();
         }, agentTimeout.milliseconds + 1000);
 
+        InternalEventManager.on("parcels:synchronized", async () => {
+            await this._desiresManager.generateDesires();
+        });
+
         // Start the main loop
         await Promise.all([this.shoutHelloMessage(), this._run()]);
     }
@@ -233,8 +238,9 @@ export class PlayerBDI {
             this._beliefs.synchronizeKnownAgents();
             this._beliefs.synchronizeKnownParcels();
 
+            this._desiresManager.generateExplorationDesires();
             // Generate desires based on current beliefs
-            await this._desiresManager.generateDesires();
+            //await this._desiresManager.generateDesires();
 
             // Check if we need to execute a handoff
             if (this._handoffCoordinator.hasActiveHandoff()) {

@@ -225,10 +225,16 @@ export class IntentionManager {
             this.addIntentionToQueue(intention, desire.priority);
         } else {
             // Regular delivery without handoff
-            const intention: Intention = Intention.deliver(desire.position);
-            this.processMovingIntention(intention, desire);
+            if (desire.priority !== DesirePriorities.PRIORITY_DELIVERY) {
+                const intention: Intention = Intention.deliver(desire.position);
+                this.processMovingIntention(intention, desire);
+                this.addIntentionToQueue(intention, desire.priority);
+            }
 
-            this.addIntentionToQueue(intention, desire.priority);
+            const putDown: Intention = Intention.putDown(desire.position);
+            putDown.context = desire.context;
+
+            this.addIntentionToQueue(putDown, desire.priority);
         }
     }
 
@@ -248,15 +254,14 @@ export class IntentionManager {
             return;
         }
 
-        //If it's not a urgent pick-up move to that position
+        //If it's not an urgent pick-up move to that position
         if (desire.priority !== DesirePriorities.PRIORITY_PICKUP) {
             const intention: Intention = Intention.move(desire.position);
             this.processMovingIntention(intention, desire);
             this.addIntentionToQueue(intention, desire.priority);
         }
 
-        // Otherwise, create a MOVE intention
-
+        // Otherwise, create a PICK-UP intention
         const pickUp: Intention = Intention.pickUp(desire.position);
         pickUp.context = desire.context;
 

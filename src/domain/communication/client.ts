@@ -186,6 +186,10 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                         config,
                         "MOVEMENT_DURATION",
                     ),
+                    agentTimeout: SocketClient.parseMillisecondsDurationConfiguration(
+                        config,
+                        "AGENT_TIMEOUT",
+                    ),
                     agentVisibilityDistance: SocketClient.parseNumericConfiguration(
                         config,
                         "AGENTS_OBSERVATION_DISTANCE",

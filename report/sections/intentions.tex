@@ -1,0 +1,40 @@
+\section{Intentions}
+
+\subsection{Definition and Role}
+
+In the Deliveroo agent, intentions represent the agent’s chosen commitments: the plans it is actively pursuing. While desires are possible goals the agent might want to achieve, intentions are selected desires that have been turned into concrete actions. These intentions guide the agent’s behavior over time and are at the core of its deliberative process.
+
+\subsection{Execution Loop}
+
+At every decision step, the agent follows a simple control loop: it selects the most promising desire, translates it into an intention, and attempts to execute that intention. If the intention is successful and reaches its goal, it is removed. If not, it may be retried or eventually discarded. This process is illustrated below:
+
+\begin{algorithm}
+	\DontPrintSemicolon
+	\caption{Deliberation and Intention Execution Loop}
+	\While{agent is active}{
+		$desire \gets$ select highest-priority desire\;
+		$intention \gets$ generate intention from $desire$\;
+		execute($intention$)\;
+		\If{intention is complete}{
+			remove $intention$ from memory\;
+		}
+		\ElseIf{intention repeatedly fails}{
+			mark $desire$ as failed and discard $intention$\;
+		}
+	}
+\end{algorithm}
+
+This simple but flexible loop enables the agent to dynamically adapt its behavior as goals and circumstances evolve in the environment.
+
+\subsection{Composite Intentions for Pickup and Delivery}
+
+A noteworthy case occurs with parcel pickup and delivery tasks. These usually require a **sequence** of actions: first moving to the parcel location, and then picking it up. For this reason, the agent generates two separate intentions:
+\begin{enumerate}
+	\item A \texttt{MOVE} intention to navigate to the parcel location.
+	\item A \texttt{PICK\_UP} intention to collect the parcel once the agent arrives.
+\end{enumerate}
+
+This modular decomposition allows the agent to treat complex goals as a series of manageable steps, improving robustness and reactivity. For instance, if the MOVE intention fails due to a blocked path, it can be abandoned or rerouted without affecting the overall pickup goal.
+
+The same logic applies to deliveries: the agent first moves toward the delivery point, and only once it arrives does it execute the actual drop-off action. This separation of concerns allows the system to better handle interruptions, rerouting, or replanning based on updated environmental information.
+
