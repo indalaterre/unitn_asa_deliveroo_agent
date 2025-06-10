@@ -86,7 +86,10 @@ export class IntentionManager {
             console.log(`Current intention: ${this._currentIntention.toString()}`);
 
             // Execute the intention
-            const success: boolean = await this.executeIntention(this._currentIntention);
+            const success: boolean = await this.executeIntention(this._currentIntention).catch((error) => {
+                console.log(`executeIntention error: ${error}`);
+                return false;
+            });
 
             if (!success) {
                 // Record failure
@@ -104,6 +107,18 @@ export class IntentionManager {
                         this.desiresManager.markDesireAsFailed(relatedDesire);
                     }
 
+                    if (this.handoffCoordinator.hasActiveHandoff() && (this._currentIntention.type == IntentionTypes.PICK_UP_HANDOFF || this._currentIntention.type == IntentionTypes.PUT_DOWN_HANDOFF)) {
+                        await this.handoffCoordinator.createHandofUpdate(
+                            this.beliefs.myId,
+                            this._currentIntention.context.handoffRequestId,
+                            this._currentIntention.context.partnerId,
+                            HandoffUpdateType.CANCELED,
+                        );
+
+                        console.log(`handleDesireFailure drop handoff`);
+                        this.handoffCoordinator.completeHandoff(this._currentIntention.context.handoffRequestId, false);
+                    }
+
                     this._currentIntention = null;
                 }
             } else {
@@ -116,7 +131,7 @@ export class IntentionManager {
                 }
             }
         } else {
-            //console.log("There are no intention possible. WAITING for best moments");
+            console.log("There are no intention possible. WAITING for best moments");
         }
     }
 
@@ -366,8 +381,11 @@ export class IntentionManager {
             case IntentionTypes.PICK_UP_HANDOFF:
             case IntentionTypes.PUT_DOWN_HANDOFF:
                 // Check if we are on time
-                return true;  // TODO: Change this
-                return intention.context.expiresAt > Date.now();
+                if (this.handoffCoordinator.hasActiveHandoff()){
+                    const activeHandoff = this.handoffCoordinator.getActiveHandoff();
+                    return activeHandoff.expiresAt > Date.now();
+                }
+                return false;
             default:
                 return false;
         }
@@ -499,17 +517,19 @@ export class IntentionManager {
                                 break;
                             }
                         }
-
+                        // Ask to move away
                         await this.handoffCoordinator.createHandofUpdate(
                             this.beliefs.myId,
                             handoffRequestId,
                             intention.context.partnerId,
                             HandoffUpdateType.NEW_METTING_POINT,
-                            HandoffActionRequire.MOVE,
-                            Array.from(parcelsDropped),
+                            HandoffActionRequire.MOVE_AWAY,
+                            null,
                             requiredPositionToMove,
                             intention.context.meetingTime + 500,
                         );
+
+                        await new Promise((resolve) => setTimeout(resolve, 500));
 
                     } else {
 
@@ -538,7 +558,10 @@ export class IntentionManager {
                         );
 
                         const nextDirection: Directions = this.beliefs.myPosition.getDirection(positionToMove);
-                        const moved = await this.actuator.move(nextDirection);
+                        const moved = await this.actuator.move(nextDirection).catch((error) => {
+                            console.log(error.track);
+                            return false;
+                        });
 
                         if (moved) {
                             // Wait a moment for the other agent to pick up
@@ -565,8 +588,6 @@ export class IntentionManager {
                     const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
                         friendAgent.position,
                     );
-
-                    // TODO: Da qui
 
                     if (handoffPaths?.length >= 2 && handoffPaths[1].length > 0) {
 
@@ -606,8 +627,6 @@ export class IntentionManager {
 
             case IntentionTypes.PICK_UP_HANDOFF:
             {
-                const putDownPartnerPosition = this.beliefs.partnerAdjacentTile(intention.context.partnerId);
-
                 // Get the handoff request ID from context
                 const handoffRequestId = intention.context.handoffRequestId;
                 if (!handoffRequestId) {
@@ -666,9 +685,17 @@ export class IntentionManager {
 
                             // Calculate path to target
                             return await this.moveTowards(intention);
-                            break;
-                        case HandoffActionRequire.PICK_UP:
 
+                        case HandoffActionRequire.MOVE_AWAY:
+                        {
+                            const moved = await this.moveTowards(intention);
+
+                            await new Promise((resolve) => setTimeout(resolve, 300));
+
+                            return moved;
+                        }
+                        
+                        case HandoffActionRequire.PICK_UP:
                             // Wait a moment for the other agent to put down
                             await new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -677,7 +704,10 @@ export class IntentionManager {
                             this.beliefs.synchronizeKnownParcels();
 
                             const nextDirection: Directions = this.beliefs.myPosition.getDirection(intention.position);
-                            let moved = await this.actuator.move(nextDirection)
+                            let moved = await this.actuator.move(nextDirection).catch((error) => {
+                                console.log(error.track);
+                                return false;
+                            });
                 
                             // Try to pick up the parcels
                             const pickupResult = await this.actuator.pickup()
@@ -689,9 +719,7 @@ export class IntentionManager {
                                 //await this.handoffCoordinator.sendHandoffConfirmation(activeHandoff, false)
                                 return Promise.resolve(false);
                             }
-                            
-                            console.log(`pickupResult:`);  // TODO: Remove
-                            pickupResult.forEach(parcelId => console.log(parcelId));  // TODO: Remov
+
                             // Update our beliefs
                             this.beliefs.updateCarriedParcelsAfterPickup(pickupResult);
 
@@ -749,13 +777,11 @@ export class IntentionManager {
             return true;
         }
 
-        // TODO: Remove these lines
-        //if (this.beliefs.playerInfo.name == "Marco") {
-        //    return;
-        //}
-
         const nextDirection: Directions = this.beliefs.myPosition.getDirection(nextPosition);
-        const successfulMove: boolean = await this.actuator.move(nextDirection);
+        const successfulMove: boolean = await this.actuator.move(nextDirection).catch((error) => {
+            console.log(error.track);
+            return false;
+        });
         if (successfulMove) {
             this.beliefs.myPosition = nextPosition;
         }
@@ -800,6 +826,9 @@ export class IntentionManager {
                             intention.context.partnerId,
                             HandoffUpdateType.CANCELED,
                         );
+
+                        console.log(`handleDesireFailure drop handoff`);
+                        this.handoffCoordinator.completeHandoff(intention.context.handoffRequestId, false);
                     }
                 }
                 this._intentionQueue.remove(intention);

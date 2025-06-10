@@ -82,10 +82,15 @@ export class DesiresManager {
             this._activeDesires.push(putDownDesire);
         } else {
 
+            let handoffDesire = null;
             if (this.handoffCordinator.hasActiveHandoff()) {
+
                 const activeHandoff = this.handoffCordinator.getActiveHandoff();
 
-                this.generatePutDownHandoffDesire(activeHandoff.receiverId, this.beliefs.carryingParcelIds, activeHandoff.meetingPosition);
+                // Calculate benefit of handoff
+                const handoffBenefit = this.beliefs.evaluateHandoffBenefit((activeHandoff.initiatorId == this.beliefs.myId)? activeHandoff.receiverId : activeHandoff.initiatorId);
+
+                handoffDesire = this.generatePutDownHandoffDesire(activeHandoff.receiverId, this.beliefs.carryingParcelIds, activeHandoff.meetingPosition, handoffBenefit);
 
             } else {
 
@@ -95,18 +100,30 @@ export class DesiresManager {
                 if (potentialHandoffPartner) {
                     // Create a PutDownHandoff desire with handoff context
                     const { agentId, meetingPosition, benefit } = potentialHandoffPartner;
-                    this.generatePutDownHandoffDesire(agentId, this.beliefs.carryingParcelIds, meetingPosition, benefit);
+                    handoffDesire = this.generatePutDownHandoffDesire(agentId, this.beliefs.carryingParcelIds, meetingPosition, benefit);
                 }
             }
 
             // Standard delivery desire without handoff
+            //const totalParcelValue: number = this.beliefs.carriedParcels.reduce(
+            //    (sum: number, parcel: Parcel) => sum + parcel.currentScore,
+            //    0,
+            //);            
+            //const standardDeliveryBenefit = Math.min(deliveryPoint.distance - Math.floor(totalParcelValue / 10), 1);
+
+            const standardDeliveryBenefit = deliveryPoint.distance;
+
             const deliverDesire: Desire = Desire.deliverParcel(
                 80, // Medium-high priority
                 deliveryPoint.position,
                 this.beliefs.carryingParcelIds,
             );
 
-            this._activeDesires.push(deliverDesire);
+            if (!!handoffDesire && (handoffDesire.context.benefit < standardDeliveryBenefit || (handoffDesire.context.benefit == 1 && standardDeliveryBenefit == 1))) {
+                this._activeDesires.push(handoffDesire);
+            } else {
+                this._activeDesires.push(deliverDesire);
+            }
         }
     }
 
@@ -131,7 +148,6 @@ export class DesiresManager {
             if (!this.beliefs.isTrustedAgent(agent.agentId)) {
                 continue;
             }
-
             // Calculate benefit of handoff
             const handoffBenefit = this.beliefs.evaluateHandoffBenefit(agent.agentId);
 
@@ -313,16 +329,17 @@ export class DesiresManager {
         this._activeDesires.push(pickUpHandoffDesire);
     }
 
-    generatePutDownHandoffDesire(partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number=0): void {
+    generatePutDownHandoffDesire(partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number): Desire {
         // Create pickup handoff desire with the highest priority
         const putDownHandoffDesire: Desire = Desire.putDownHandoff(
             DesirePriorities.HANDOFF_PRIORITY,
             partnerId,
             parcelIds,
-            meetingPosition
+            meetingPosition,
+            benefit,
         );
 
-        this._activeDesires.push(putDownHandoffDesire);
+        return putDownHandoffDesire;
     }
 
     /**

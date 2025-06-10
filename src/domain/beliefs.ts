@@ -331,7 +331,7 @@ export class BeliefContainer {
                     // Calculate competitive score using the delivery point manager
                     const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
                         tilePosition,
-                        distance ?? Number.POSITIVE_INFINITY,
+                        distance/* ?? Number.POSITIVE_INFINITY*/,
                     );
 
                     // Get additional agent density from the surrounding area
@@ -348,7 +348,7 @@ export class BeliefContainer {
                     // The sorting function will handle prioritization
 
                     return {
-                        distance: distance || Number.POSITIVE_INFINITY,
+                        distance: distance /*|| Number.POSITIVE_INFINITY*/,
                         position: tilePosition,
                         context: {
                             weightedDistance: weightedScore,
@@ -626,6 +626,10 @@ export class BeliefContainer {
             reachableParcels.map((parcel: Parcel) => parcel.id),
         );
 
+        if (reachableParcels.length == 0){
+            return;
+        }
+
         const visibility: number = GameConfiguration.parcelVisibilityDistance;
 
         //This set of arrays is meant to detect changes in parcel beliefs in order to fire "changed belief" event
@@ -762,6 +766,11 @@ export class BeliefContainer {
         return true;
     }
 
+    /**
+     * 
+     * @param pickedParcelIds 
+     * @returns 
+     */
     updateCarriedParcelsAfterPickup(pickedParcelIds: Set<string>) {
         const pickedUpParcels: HashSet<Parcel> = this.parcelsByPosition.get(this.myPosition);
         if (!pickedUpParcels) {
@@ -847,7 +856,7 @@ export class BeliefContainer {
 
          */
         const timeSavings: number =
-            myDistanceToMeeting + friendDistanceToMeeting;
+            myDistanceToMeeting; //+ friendDistanceToMeeting;
 
         const totalParcelValue: number = this._carriedParcels.reduce(
             (sum: number, parcel: Parcel) => sum + parcel.currentScore,
@@ -855,7 +864,9 @@ export class BeliefContainer {
         );
 
         // We increase the priority of the handoff if parcels are closer to expiration (their score is low)
-        return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
+        //return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
+
+        return timeSavings;
     }
 
     //////// AGENT

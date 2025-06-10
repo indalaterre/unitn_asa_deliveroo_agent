@@ -153,7 +153,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                 return;
             }
 
-            console.log(`onHandoffUpdateReceived ${message.meetingPosition}`);
+            console.log(`onHandoffUpdateReceived ${message.updateType}`);
 
             const parsedResponse: HandoffUpdate = {
                 updateId: message.updateId,

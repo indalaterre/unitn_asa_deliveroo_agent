@@ -201,7 +201,7 @@ export class DeliveryPointManager {
         // Tactical advantage reduces the score (makes the point more attractive)
         score -= tacticalAdvantage * 0.5;
 
-        return score;
+        return Math.max(score, 0);
     }
 
     /**

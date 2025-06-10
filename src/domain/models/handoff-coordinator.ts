@@ -27,6 +27,7 @@ export enum HandoffUpdateType {
 
 export enum HandoffActionRequire {
     MOVE = "move",
+    MOVE_AWAY = "move away",
     PICK_UP = "pick_up",
 }
 
@@ -94,19 +95,24 @@ export class HandoffCoordinator {
             // Store the incoming request
             this.incomingRequests.set(request.requestId, request);
             // Process the incoming request (will be handled by the intention manager)
-            await this.handleHandoffRequest(request);
+            await this.handleHandoffRequest(request).catch(error => {
+                console.log(`handleHandoffRequest: ${error}`);  // TODO: Remove
+            });
         });
 
         // Handle incoming handoff response
         this.messenger.onHandoffResponseReceived(async (response: HandoffResponse) => {
-
-            await this.handleHandoffResponse(response);
+            await this.handleHandoffResponse(response).catch(error => {
+                console.log(`handleHandoffRequest: ${error}`);  // TODO: Remove
+            });
         });
 
         // Handle incoming handoff update
         this.messenger.onHandoffUpdateReceived(async (update: HandoffUpdate) => {
             this.incomingUpdate.set(update.updateId, update);
-            await this.handleHandoffUpdate(update);
+            await this.handleHandoffUpdate(update).catch(error =>{
+                console.log(`onHandoffUpdateReceived: ${error}`);  // TODO: Remove
+            });
         });
 
         // Set up periodic cleanup of expired requests
@@ -280,7 +286,12 @@ export class HandoffCoordinator {
      * @returns The active handoff request, or null if none
      */
     getActiveHandoff(): HandoffRequest | null {
-        return this.activeHandoff;
+
+        if (this.hasActiveHandoff()){
+            return this.activeHandoff;
+        } else {
+            null;
+        }
     }
 
     /**
@@ -432,7 +443,7 @@ export class HandoffCoordinator {
                     handoffId: handoffId,
                     initiatorId: initiatorId,
                     receiverId: receiverId,
-                    actionRequired: HandoffActionRequire.MOVE,
+                    actionRequired: actionRequired,
                     meetingPosition: meetingPosition,
                     timeToMeet: timeToMeet,
                     updateType: updateType,
@@ -492,7 +503,7 @@ export class HandoffCoordinator {
     async handleHandoffUpdate(update: HandoffUpdate) {
 
         if (this.activeHandoff != null && this.activeHandoff.requestId == update.handoffId) {
-            
+
             console.log(`handleHandoffUpdate updateType: ${update.updateType}`);
 
             switch (update.updateType) {
@@ -525,6 +536,8 @@ export class HandoffCoordinator {
                             receiverId: update.initiatorId,
                             updateType: HandoffUpdateType.CANCELED,
                         } as HandoffUpdate);
+
+                        this.completeHandoff(update.handoffId, false);
                     }
 
                     break;
@@ -557,13 +570,9 @@ export class HandoffCoordinator {
                 }
 
                 case HandoffUpdateType.NEW_METTING_POINT_ACCEPTED: {
-                    if (this.outgoingUpdate.has(update.updateId)) {
                         const outgoing = this.outgoingUpdate.get(update.updateId)
                         this.activeHandoff.meetingPosition = outgoing.meetingPosition;
                         this.activeHandoff.timeToMeet = outgoing.timeToMeet;
-                    } else {
-                        console.log(`DIO SCHIFO`);  // TODO: Remove this log
-                    }
 
                     break;
                 }
@@ -573,6 +582,10 @@ export class HandoffCoordinator {
         this.incomingUpdate.delete(update.updateId);
     }
 
+    /**
+     * 
+     * @param friendPosition 
+     */
     public moveTowardFrined(friendPosition: Position) {
         this.activeHandoff.meetingPosition = friendPosition;
     }

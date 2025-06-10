@@ -6,7 +6,7 @@ import type { Position } from "../models/environment";
  * The priority of a desire
  */
 export enum DesirePriorities {
-    HANDOFF_PRIORITY = 85,
+    HANDOFF_PRIORITY = 105,
     PRIORITY_PICKUP = 100,
     PICKUP = 80,
     EXPLORATION = 50,
@@ -98,11 +98,14 @@ export class Desire extends AbstractHashable implements Hashable {
     /**
      * 
      * @param priority
-     * @param position 
+     * @param partnerId 
+     * @param parcelIds
+     * @param position
+     * @param benefit
      * @returns 
      */
-    static putDownHandoff(priority: number, partnerId: string, parcelIds: string[], position: Position): Desire {
-        return new Desire(DesireTypes.PUT_DOWN_HANDOFF, priority, position, { partnerId, parcelIds });
+    static putDownHandoff(priority: number, partnerId: string, parcelIds: string[], position: Position, benefit: number): Desire {
+        return new Desire(DesireTypes.PUT_DOWN_HANDOFF, priority, position, { partnerId, parcelIds, benefit });
     }
 
     /**
