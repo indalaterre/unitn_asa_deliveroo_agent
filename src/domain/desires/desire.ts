@@ -6,7 +6,7 @@ import type { Position } from "../models/environment";
  * The priority of a desire
  */
 export enum DesirePriorities {
-    HANDOFF_PRIORITY = 105,
+    HANDOFF_PRIORITY = 85,
     PRIORITY_PICKUP = 100,
     PICKUP = 80,
     EXPLORATION = 50,

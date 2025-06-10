@@ -715,8 +715,6 @@ export class IntentionManager {
                                 console.error("Failed to pick up parcels during handoff")
                                 // Complete the handoff as failed
                                 this.handoffCoordinator.completeHandoff(handoffRequestId, false)
-                                // Send confirmation of failure
-                                //await this.handoffCoordinator.sendHandoffConfirmation(activeHandoff, false)
                                 return Promise.resolve(false);
                             }
 

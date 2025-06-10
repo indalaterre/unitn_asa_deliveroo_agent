@@ -233,7 +233,7 @@ export class PlayerBDI {
     private async _run(): Promise<void> {
         while (this._isAlive) {
             await new Promise((resolve) => setImmediate(resolve));
-            
+
             // Synchronize beliefs
             try {
                 this._beliefs.synchronizeKnownAgents();
@@ -242,18 +242,18 @@ export class PlayerBDI {
                 console.log(`Synchronize beliefs: ${error}`)
             }
 
-        
+
             //if (this.playerInfo.name === "Amico2") {
             //    continue;
             //}
-        
+
             try {
                 // Generate desires based on current beliefs
                 this. _desiresManager.generateDesires();
             } catch(error) {
                 console.log(`Generate desires based on current beliefs: ${error}`);
             }
-        
+
             // Process intentions
             await this._intentionManager.processIntentions().catch((error) => {
                 console.log(`Process intentions: ${error.stack}`);

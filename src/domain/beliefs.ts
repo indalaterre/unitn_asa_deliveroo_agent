@@ -331,7 +331,7 @@ export class BeliefContainer {
                     // Calculate competitive score using the delivery point manager
                     const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
                         tilePosition,
-                        distance/* ?? Number.POSITIVE_INFINITY*/,
+                        distance /*?? Number.POSITIVE_INFINITY*/,
                     );
 
                     // Get additional agent density from the surrounding area

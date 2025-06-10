@@ -262,23 +262,26 @@ export class HandoffCoordinator {
      * @param success Whether the handoff was successful
      * @returns The completed handoff request, or null if not found
      */
-    completeHandoff(requestId: string, success: boolean, send_message: boolean=false): HandoffRequest | null {
-        const request =
-            this.outgoingRequests.get(requestId) || this.incomingRequests.get(requestId);
-        if (!request) return null;
+    completeHandoff(requestId: string, success: boolean, send_message: boolean=false) {
+        //const request = this.outgoingRequests.get(requestId) || this.incomingRequests.get(requestId);
+        //if (!request) return null;
 
-        request.status = success ? HandoffStatus.COMPLETED : HandoffStatus.FAILED;
+        try {
+            const request = this.activeHandoff;
 
-        if (send_message) {
-            this.sendHandoffConfirmation(this.activeHandoff);
+            request.status = success ? HandoffStatus.COMPLETED : HandoffStatus.FAILED;
+
+            if (send_message) {
+                this.sendHandoffConfirmation(this.activeHandoff);
+            }
+
+            // Clean up the request
+            this.outgoingRequests.delete(requestId);
+            this.incomingRequests.delete(requestId);
+            this.activeHandoff = null;
+        } catch(error) {
+            console.log(`completeHandoff: ${error}`);
         }
-
-        // Clean up the request
-        this.outgoingRequests.delete(requestId);
-        this.incomingRequests.delete(requestId);
-        this.activeHandoff = null;
-
-        return request;
     }
 
     /**
