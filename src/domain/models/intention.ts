@@ -29,12 +29,19 @@ export class Intention extends AbstractHashable implements Hashable {
      */
     private _failures = 0;
 
+    /**
+     * Only used to improve debugging
+     * @private
+     */
+    private readonly _serializedType: string;
+
     constructor(
         readonly type: IntentionTypes,
         readonly position: Position,
         public _context?: any,
     ) {
         super();
+        this._serializedType = IntentionTypes[type];
     }
 
     /**
@@ -158,5 +165,16 @@ export class Intention extends AbstractHashable implements Hashable {
      */
     hasContext(): boolean {
         return !!this._context;
+    }
+
+    /**
+     * TRUE if it's a pickup intention
+     */
+    get isPickup(): boolean {
+        return this.type === IntentionTypes.PICK_UP;
+    }
+
+    get isExplore(): boolean {
+        return this.type === IntentionTypes.EXPLORE;
     }
 }

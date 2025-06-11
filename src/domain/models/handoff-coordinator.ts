@@ -408,11 +408,7 @@ export class HandoffCoordinator {
 
             case HandoffStatus.REJECTED:
 
-                // TODO: do something
-                //this.completeHandoff(response.requestId, false);
-                if (this.outgoingRequests.has(response.requestId)){
-                    this.outgoingRequests.delete(response.requestId);
-                }
+                this.completeHandoff(response.requestId, false);
 
                 break;
 
@@ -436,7 +432,7 @@ export class HandoffCoordinator {
     ): Promise<HandoffUpdate> {
         const updateId = uuidv4();
 
-        let update: HandoffUpdate;
+        let update: HandoffUpdate = null;
 
         switch (updateType) {
             case HandoffUpdateType.NEW_METTING_POINT:
@@ -506,7 +502,6 @@ export class HandoffCoordinator {
     async handleHandoffUpdate(update: HandoffUpdate) {
 
         if (this.activeHandoff != null && this.activeHandoff.requestId == update.handoffId) {
-
             console.log(`handleHandoffUpdate updateType: ${update.updateType}`);
 
             switch (update.updateType) {

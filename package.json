@@ -14,17 +14,18 @@
     }
   ],
   "scripts": {
-    "build": "tsx esbuild.config.ts",
     "build:bdi": "tsx esbuild.bdi.config.ts",
-    "start": "node dist/main.js",
     "start:dev": "npm run build && npm run start",
-    "start:agent": "npm run build && node dist/main.js --agent-name",
-    "start:bdi": "npm run build:bdi && node dist/main-bdi.js --agent-name",
+    "start:bdi": "npm run build-bdi && node dist/main-bdi.js --agent-name",
+    "start:main": "npm run build-bdi && node dist/main-bdi.js",
+    "start:second": "npm run build-bdi && node dist/main-bdi.js --agent-name second",
+    "start:third": "npm run build-bdi && node dist/main-bdi.js --agent-name third",
     "pre-commit": "bione ci src/",
     "lint": "biome check src/",
     "lint-fix": "biome check --write src/"
   },
   "dependencies": {
+    "axios": "^1.9.0",
     "command-line-args": "^6.0.1",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.7",

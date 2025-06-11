@@ -8,6 +8,8 @@ import type { Position } from "../models/environment";
 export enum DesirePriorities {
     HANDOFF_PRIORITY = 85,
     PRIORITY_PICKUP = 100,
+    PRIORITY_DELIVERY = 100,
+    DELIVERY = 90,
     PICKUP = 80,
     EXPLORATION = 50,
 }
@@ -16,11 +18,11 @@ export enum DesirePriorities {
  * Types of desires an agent can have
  */
 export enum DesireTypes {
-    DELIVER_PARCEL = "DELIVER_PARCEL",
     PICKUP_PARCEL = "PICKUP_PARCEL",
-    EXPLORE_ENVIRONMENT = "EXPLORE_ENVIRONMENT",
-    PUT_DOWN_PARCEL = "PUT_DOWN_PARCEL",
+    DELIVER_PARCEL = "DELIVER_PARCEL",
     PICKUP_HANDOFF = "PICKUP_HANDOFF",
+    PUT_DOWN_PARCEL = "PUT_DOWN_PARCEL",
+    EXPLORE_ENVIRONMENT = "EXPLORE_ENVIRONMENT",
     PUT_DOWN_HANDOFF = "PUT_DOWN_HANDOFF",
 }
 
@@ -121,16 +123,23 @@ export class Desire extends AbstractHashable implements Hashable {
     }
 
     /**
-     * Generates a hash string for this desire
-     */
-    protected hashString(): string {
-        return `${this.type}-${this.position?.hashCode() || "nopos"}-${JSON.stringify(this.context)}`;
-    }
-
-    /**
      * Returns a string representation of this desire
      */
     toString(): string {
         return `${this.type} - [${this.position?.toString() || "no position"}] - Priority: ${this.priority}`;
+    }
+
+    /**
+     * @returns TRUE if the desire is of type "EXPLORATION"
+     */
+    get isExplore(): boolean {
+        return this.type === DesireTypes.EXPLORE_ENVIRONMENT
+    }
+
+    /**
+     * Generates a hash string for this desire
+     */
+    protected hashString(): string {
+        return `${this.type}-${this.position?.hashCode() || "nopos"}-${JSON.stringify(this.context)}`;
     }
 }

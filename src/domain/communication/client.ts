@@ -272,6 +272,10 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                         config,
                         "PARCELS_OBSERVATION_DISTANCE",
                     ),
+                    parcelAvgReward: SocketClient.parseNumericConfiguration(
+                        config,
+                        "PARCEL_REWARD_AVG",
+                    ),
                     parcelDecayingInterval: SocketClient.parseSecondsDurationConfiguration(
                         config,
                         "PARCEL_DECADING_INTERVAL",
@@ -279,7 +283,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                 } as EnvironmentConfiguration;
 
                 const moveScoreCost: number = parsedConfig.parcelDecayingInterval.isInfinite
-                    ? 0
+                    ? parsedConfig.movementDuration.seconds
                     : parsedConfig.movementDuration.seconds /
                       parsedConfig.parcelDecayingInterval.seconds;
 
