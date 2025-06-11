@@ -3,6 +3,7 @@ import type { Messenger } from "@domain/communication/messenger";
 import { GameConfiguration } from "@domain/models";
 import type { Position } from "@domain/models/environment";
 import { v4 as uuidv4 } from "uuid";
+import { InternalEventManager } from "@utils/internal-event-manager";
 
 /**
  * Status of a handoff request
@@ -279,6 +280,8 @@ export class HandoffCoordinator {
             this.outgoingRequests.delete(requestId);
             this.incomingRequests.delete(requestId);
             this.activeHandoff = null;
+
+            InternalEventManager.emit("handoff:completed", requestId);
         } catch(error) {
             console.log(`completeHandoff: ${error}`);
         }
@@ -305,7 +308,7 @@ export class HandoffCoordinator {
         if (this.activeHandoff?.expiresAt < Date.now()) {
             this.activeHandoff = null;
         }
-        return this.activeHandoff !== null;
+        return this.activeHandoff != null;
     }
 
     /**

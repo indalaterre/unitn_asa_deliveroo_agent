@@ -60,6 +60,11 @@ export class IntentionManager {
         InternalEventManager.on("desire:failed", (desire: Desire) => {
             this.handleDesireFailure(desire);
         });
+
+        // Listen for desire failures
+        InternalEventManager.on("handoff:completed", (requestId: string) => {
+            this.handleHandoffCompleted(requestId);
+        });
     }
 
     /**
@@ -111,7 +116,7 @@ export class IntentionManager {
                         this.desiresManager.markDesireAsFailed(relatedDesire);
                     }
 
-                    if (this.handoffCoordinator.hasActiveHandoff() && (this._currentIntention.type == IntentionTypes.PICK_UP_HANDOFF || this._currentIntention.type == IntentionTypes.PUT_DOWN_HANDOFF)) {
+                    if (this.handoffCoordinator.hasActiveHandoff() && (this._currentIntention.type == IntentionTypes.PICKUP_HANDOFF || this._currentIntention.type == IntentionTypes.PUT_DOWN_HANDOFF)) {
                         await this.handoffCoordinator.createHandofUpdate(
                             this.beliefs.myId,
                             this._currentIntention.context.handoffRequestId,
@@ -280,6 +285,9 @@ export class IntentionManager {
                     timeToMeet: activeHandoff.timeToMeet,
                 };
 
+                if (this._intentionQueue.contains(intention))
+                    this._intentionQueue.remove(intention)
+
                 this._intentionQueue.add(intention, desire.priority);
             } else {
                 console.log("generatePickupHandoffIntention NO activeHandoff");
@@ -307,6 +315,9 @@ export class IntentionManager {
                 // Fall back to regular delivery if partner not found
                 const regularIntention: Intention = Intention.deliver(desire.position);
                 this.processMovingIntention(regularIntention, desire);
+
+                if (this._intentionQueue.contains(regularIntention))
+                    this._intentionQueue.remove(regularIntention)
                 this._intentionQueue.add(regularIntention, desire.priority);
                 return;
             }
@@ -320,6 +331,9 @@ export class IntentionManager {
                 // Fall back to regular delivery if path calculation fails
                 const regularIntention: Intention = Intention.deliver(desire.position);
                 this.processMovingIntention(regularIntention, desire);
+
+                if (this._intentionQueue.contains(regularIntention))
+                    this._intentionQueue.remove(regularIntention)
                 this._intentionQueue.add(regularIntention, desire.priority);
                 return;
             }
@@ -360,6 +374,8 @@ export class IntentionManager {
                 timeToMeet: activeHandoff.timeToMeet,
             };
 
+            if (this._intentionQueue.contains(intention))
+                    this._intentionQueue.remove(intention)
             this._intentionQueue.add(intention, desire.priority);
         } else {
             console.log("generatePutDownHandoffIntention waiting response")
@@ -396,7 +412,7 @@ export class IntentionManager {
             case IntentionTypes.EXPLORE:
                 // These intentions are always valid
                 return true;
-            case IntentionTypes.PICK_UP_HANDOFF:
+            case IntentionTypes.PICKUP_HANDOFF:
             case IntentionTypes.PUT_DOWN_HANDOFF:
                 // Check if we are on time
                 if (this.handoffCoordinator.hasActiveHandoff()){
@@ -432,7 +448,7 @@ export class IntentionManager {
             case IntentionTypes.PUT_DOWN:
                 // These intentions are complete after a successful execution
                 return true;
-            case IntentionTypes.PICK_UP_HANDOFF:
+            case IntentionTypes.PICKUP_HANDOFF:
             case IntentionTypes.PUT_DOWN_HANDOFF:
                 return true;
             default:
@@ -586,6 +602,7 @@ export class IntentionManager {
                             await new Promise((resolve) => setTimeout(resolve, 500));
                             // Complete the handoff
                             this.handoffCoordinator.completeHandoff(handoffRequestId, true);
+                            this._intentionQueue.remove(intention);
                             console.log(`Handoff completed successfully at ${intention.position}`);
                         }
 
@@ -643,7 +660,7 @@ export class IntentionManager {
                 }
             }
 
-            case IntentionTypes.PICK_UP_HANDOFF:
+            case IntentionTypes.PICKUP_HANDOFF:
             {
                 // Get the handoff request ID from context
                 const handoffRequestId = intention.context.handoffRequestId;
@@ -733,6 +750,7 @@ export class IntentionManager {
                                 console.error("Failed to pick up parcels during handoff")
                                 // Complete the handoff as failed
                                 this.handoffCoordinator.completeHandoff(handoffRequestId, false)
+                                this._intentionQueue.remove(intention);
                                 return Promise.resolve(false);
                             }
 
@@ -740,7 +758,7 @@ export class IntentionManager {
                             this.beliefs.updateCarriedParcelsAfterPickup(pickupResult);
 
                             this.handoffCoordinator.completeHandoff(handoffRequestId, true);
-
+                            this._intentionQueue.remove(intention);
                             return Promise.resolve(true);
                         default:
                             console.error("Missing handoff action required");
@@ -837,7 +855,7 @@ export class IntentionManager {
                 desire.position?.equals(intention.position) &&
                 JSON.stringify(desire.context) === JSON.stringify(intention.context)
             ) {
-                if (intention.type == IntentionTypes.PICK_UP_HANDOFF || intention.type == IntentionTypes.PUT_DOWN_HANDOFF) {
+                if (intention.type == IntentionTypes.PICKUP_HANDOFF || intention.type == IntentionTypes.PUT_DOWN_HANDOFF) {
                     if (this.handoffCoordinator.hasActiveHandoff()) {
                         this.handoffCoordinator.createHandofUpdate(
                             this.beliefs.myId,
@@ -861,6 +879,16 @@ export class IntentionManager {
             JSON.stringify(desire.context) === JSON.stringify(this._currentIntention.context)
         ) {
             this._currentIntention = null;
+        }
+    }
+
+    private handleHandoffCompleted(requestId: string): void {
+        if (this._intentionQueue.hasElementOfType(IntentionTypes.PICKUP_HANDOFF)) {
+            this._intentionQueue.removeElementsOfType(IntentionTypes.PICKUP_HANDOFF);
+        }
+
+        if (this._intentionQueue.hasElementOfType(IntentionTypes.PUT_DOWN_HANDOFF)) {
+            this._intentionQueue.removeElementsOfType(IntentionTypes.PUT_DOWN_HANDOFF);
         }
     }
 
