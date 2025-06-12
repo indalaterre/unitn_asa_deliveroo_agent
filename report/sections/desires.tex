@@ -42,7 +42,7 @@ The corresponding problem file encodes the concrete instance: one agent located 
 The planner's goal is to ensure that the agent has delivered at least one parcel and is no longer carrying any. This is formalized in the goal clause as:
 \begin{verbatim}
 	(has-delivered agent)
-	(= (carrying-packages) 0)
+	(= (carrying-parcels) 0)
 \end{verbatim}
 
 To reach this state, the planner chooses a sequence of move, pickup, and deliver actions that jointly satisfy the goal while minimizing the total cost, which integrates both physical distance and the negative reward associated with late deliveries.
@@ -80,7 +80,7 @@ This approach is ideal in deterministic settings or when a user needs a globally
     (score ?p - package)
     (distance ?from ?to - location)
     (total-cost)
-    (carrying-packages)
+    (carrying-parcels)
   )
 
   (:action deliver
@@ -93,7 +93,7 @@ This approach is ideal in deterministic settings or when a user needs a globally
     :effect (and
       (not (carrying ?a ?p))
       (has-delivered ?a)
-      (decrease (carrying-packages) 1)
+      (decrease (carrying-parcels) 1)
       (decrease (total-cost) (score ?p)) ; Score is negative: lowers total cost
     )
   )
@@ -118,13 +118,13 @@ This approach is ideal in deterministic settings or when a user needs a globally
     (= (distance locA locB) 2)
     (= (distance locB locC) 3)
     (= (total-cost) 0)
-    (= (carrying-packages) 0)
+    (= (carrying-parcels) 0)
     (not (has-delivered agent1))
   )
 
   (:goal (and
     (has-delivered agent1)
-    (= (carrying-packages) 0)
+    (= (carrying-parcels) 0)
   ))
 
   (:metric minimize (total-cost))
