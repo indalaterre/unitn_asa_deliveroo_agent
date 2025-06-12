@@ -229,12 +229,12 @@ export class IntentionManager {
                 const intention: Intention = Intention.deliver(desire.position);
                 this.processMovingIntention(intention, desire);
                 this.addIntentionToQueue(intention, desire.priority);
+            } else {
+                const putDown: Intention = Intention.putDown(desire.position);
+                putDown.context = desire.context;
+
+                this.addIntentionToQueue(putDown, desire.priority);
             }
-
-            const putDown: Intention = Intention.putDown(desire.position);
-            putDown.context = desire.context;
-
-            this.addIntentionToQueue(putDown, desire.priority);
         }
     }
 
@@ -259,13 +259,13 @@ export class IntentionManager {
             const intention: Intention = Intention.move(desire.position);
             this.processMovingIntention(intention, desire);
             this.addIntentionToQueue(intention, desire.priority);
+        } else {
+            // Otherwise, create a PICK-UP intention
+            const pickUp: Intention = Intention.pickUp(desire.position);
+            pickUp.context = desire.context;
+
+            this.addIntentionToQueue(pickUp, desire.priority);
         }
-
-        // Otherwise, create a PICK-UP intention
-        const pickUp: Intention = Intention.pickUp(desire.position);
-        pickUp.context = desire.context;
-
-        this.addIntentionToQueue(pickUp, desire.priority);
     }
 
     /**
@@ -392,14 +392,11 @@ export class IntentionManager {
             case IntentionTypes.MOVE:
             case IntentionTypes.DELIVER:
             case IntentionTypes.EXPLORE:
-                const remainingPath = intention.context.path;
-                if (!remainingPath?.length) {
-                    const isMyPosition = this.beliefs.myPosition.equals(intention.position);
-                    const a = 1;
-                }
-
                 // These intentions are complete when we reach the target position
-                return this.beliefs.myPosition.equals(intention.position);
+                const hasReachedTarget: boolean = this.beliefs.myPosition.equals(
+                    intention.position,
+                );
+                return hasReachedTarget && !intention.promote();
 
             case IntentionTypes.PICK_UP:
             case IntentionTypes.PUT_DOWN:

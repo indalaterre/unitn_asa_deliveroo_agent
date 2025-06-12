@@ -16,6 +16,26 @@ import { MultiValueHashMap } from "@utils/multivaluehashmap";
 import { InternalEventManager } from "@utils/internal-event-manager";
 import { type PddlLocation, PlanningManager, type WorldState } from "@utils/planning-manager";
 
+// Types for pickup/delivery action grouping
+export type PickupAction = {
+    parcelId: string;
+    pickupOrder: number;
+    action: string;
+    parameters: string[];
+};
+
+export type DeliveryAction = {
+    parcelId: string;
+    deliveryLocation: Position;
+    action: string;
+    parameters: string[];
+};
+
+export type PickupDeliveryGroup = {
+    deliveryAction: DeliveryAction | null; // null for pickups with no following delivery
+    pickups: PickupAction[];
+};
+
 export class BeliefContainer {
     /**
      * TRUE if this current agent is the master one
@@ -469,14 +489,13 @@ export class BeliefContainer {
 
     /**
      * Uses Fast Downward planner to find parcels worth picking up en route to a delivery
-     * @param limit Optional limit on the number of parcels to return
      * @returns Array of parcel worth picking up, with context about their value
      */
-    async generatePickupParcelsWithPDDL(limit?: number): Promise<PositionWithDistance[]> {
+    async generatePickupParcelsWithPDDL(): Promise<HashMap<Position, PositionWithDistance[]>> {
         // Skip if no parcels are available
         const visibleParcels: Parcel[] = this.visibleFreeParcels;
         if (!visibleParcels?.length) {
-            return [];
+            return new HashMap<Position, PositionWithDistance[]>();
         }
 
         // 1. Generate PDDL domain and problem
@@ -489,6 +508,7 @@ export class BeliefContainer {
             ]),
         ).map((position: string) => ({ position, isDelivery: false }) as PddlLocation);
 
+        const test = this.getRankedDeliveryLocations();
         const deliveryLocations: PddlLocation[] = this.getRankedDeliveryLocations().map(
             (position: PositionWithDistance) => {
                 return {
@@ -519,55 +539,81 @@ export class BeliefContainer {
         try {
             planSteps = await this.plannerManager.runPlanner(worldState);
             if (!planSteps?.length) {
-                return [];
+                return new HashMap<Position, PositionWithDistance[]>();
             }
         } catch (error) {
-            return [];
+            return new HashMap<Position, PositionWithDistance[]>();
         }
 
-        // 5. Extract pickup actions from the parsed plan
-        const pickupActions: { parcelId: string; pickupOrder: number; action: string }[] = [];
-        const deliveryActions: Map<string, Position> = new Map<string, Position>();
-        let pickupOrder = 0;
+        // 5.1. Group pickups before deliveries
+        const pickupDeliveryGroups: PickupDeliveryGroup[] = [];
+        let currentPickups: PickupAction[] = [];
+        let groupPickupOrder = 0;
 
         for (const step of planSteps) {
-            // Check if this is a pickup action (either pick-up or pick-up-any)
             if (step.action === "pick-up") {
-                // Extract parameters: agent, parcel, location
+                // Extract pickup action for grouping
                 if (step.parameters.length >= 2) {
                     const [_, parcelId] = step.parameters;
-
-                    // Add to pickup actions
-                    pickupActions.push({
+                    currentPickups.push({
                         parcelId,
-                        pickupOrder: pickupOrder++,
+                        pickupOrder: groupPickupOrder++,
                         action: step.action,
+                        parameters: step.parameters,
                     });
                 }
             } else if (step.action === "deliver") {
-                // Extract parameters: agent, parcel, location
-                if (step.parameters.length >= 2) {
+                // Extract delivery action and create a group
+                if (step.parameters.length >= 3) {
                     const [_, parcelId, location] = step.parameters;
-                    // Add to deliver actions
-                    deliveryActions.set(parcelId, Position.fromPddlString(location));
+                    const deliveryAction: DeliveryAction = {
+                        parcelId,
+                        deliveryLocation: Position.fromPddlString(location),
+                        action: step.action,
+                        parameters: step.parameters,
+                    };
+
+                    // Create group with current pickups and this delivery
+                    pickupDeliveryGroups.push({
+                        deliveryAction,
+                        pickups: [...currentPickups], // Copy current pickups
+                    });
+
+                    // Reset pickups for next group
+                    currentPickups = [];
                 }
             }
         }
 
+        // Handle remaining pickups with no following delivery (placeholder)
+        if (currentPickups.length > 0) {
+            pickupDeliveryGroups.push({
+                deliveryAction: null, // Placeholder for pickups with no following delivery
+                pickups: currentPickups,
+            });
+        }
+
         // 6. Convert to PositionWithDistance objects with context
-        const result: PositionWithDistance[] = [];
-        for (const action of pickupActions) {
-            // Match parcel by ID (case-insensitive)
-            const parcel: Parcel = visibleParcels.find(
-                (p) => p.id.toLowerCase() === action.parcelId.toLowerCase(),
-            );
+        const result: HashMap<Position, PositionWithDistance[]> = new HashMap<
+            Position,
+            PositionWithDistance[]
+        >();
+        for (const group of pickupDeliveryGroups) {
+            for (const action of group.pickups) {
+                // Match parcel by ID (case-insensitive)
+                const parcel: Parcel = visibleParcels.find(
+                    (p) => p.id.toLowerCase() === action.parcelId.toLowerCase(),
+                );
 
-            let deliveryPosition: Position = deliveryActions.get(action.parcelId.toLowerCase());
-            if (deliveryPosition) {
-                deliveryPosition = this.findBestDelivery(parcel.position)?.position;
-            }
+                if (!parcel) {
+                    continue;
+                }
 
-            if (parcel) {
+                let deliveryPosition: Position = group.deliveryAction?.deliveryLocation;
+                if (!deliveryPosition) {
+                    deliveryPosition = this.findBestDelivery(parcel.position)?.position;
+                }
+
                 // Calculate the path to parcel
                 const toParcelPath: Position[] = this.map.calculatePath(
                     this.myPosition,
@@ -576,10 +622,10 @@ export class BeliefContainer {
                 const distance: number = toParcelPath ? toParcelPath.length : 0;
 
                 // Calculate net benefit (score minus distance cost)
-                const deliveryDistance =
+                const deliveryDistance: number =
                     this.map.calculatePath(parcel.position, deliveryPosition)?.length || 0;
-                const totalDistance = distance + deliveryDistance;
-                const distanceCost = totalDistance * GameConfiguration.moveScoreCost;
+                const totalDistance: number = distance + deliveryDistance;
+                const distanceCost: number = totalDistance * GameConfiguration.moveScoreCost;
 
                 // Prioritize regular pick-up over pick-up-any
                 const actionBonus = action.action === "pick-up" ? 10 : 0;
@@ -588,7 +634,7 @@ export class BeliefContainer {
 
                 // Only include if net benefit is positive
                 if (netBenefit > 0) {
-                    result.push({
+                    const parcelData = {
                         position: parcel.position,
                         distance,
                         context: {
@@ -597,16 +643,15 @@ export class BeliefContainer {
                             netBenefit,
                             action: action.action,
                         },
-                    });
+                    } as PositionWithDistance;
+
+                    this.addParcelToDeliveryGroup(result, deliveryPosition, parcelData);
                 }
             }
         }
 
-        // Sort by pickup order (the order in the plan)
-        const sortedResult = result.sort((a, b) => a.context.pickupOrder - b.context.pickupOrder);
-
         // Limit the number of results if specified
-        return limit ? sortedResult.slice(0, limit) : sortedResult;
+        return result;
     }
 
     findBestExplorationSite(): Position {
@@ -1168,5 +1213,21 @@ export class BeliefContainer {
             // Higher score is better: prefer less visited tiles that are closer
             score: 1 / (visits + 1) + distance * 0.05 - agentsDensityMalus + randomFactor,
         };
+    }
+
+    private addParcelToDeliveryGroup(
+        groups: HashMap<Position, PositionWithDistance[]>,
+        delivery: Position,
+        parcel: PositionWithDistance,
+    ): void {
+        if (!parcel?.position) return;
+
+        const deliveryPosition: Position =
+            delivery ?? this.findBestDelivery(parcel.position).position;
+
+        const groupOfPickups: PositionWithDistance[] = groups.get(deliveryPosition) ?? [];
+        groupOfPickups.push(parcel);
+
+        groups.set(deliveryPosition, groupOfPickups);
     }
 }

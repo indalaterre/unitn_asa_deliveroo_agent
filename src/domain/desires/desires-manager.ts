@@ -1,6 +1,7 @@
 import type { PositionWithDistance } from "@domain/map";
 import { type Agent, GameConfiguration, type Parcel } from "@domain/models";
 import { PriorityQueue } from "@domain/models/priority-queue";
+import type { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
 import { InternalEventManager } from "@utils/internal-event-manager";
 import type { BeliefContainer } from "../beliefs";
@@ -35,7 +36,6 @@ export class DesiresManager {
      */
     async generateDesires(): Promise<void> {
         // Generate desires based on current state
-        this.generateDeliveryDesires();
 
         // Use PDDL-based pickup desires generation if enabled
         if (GameConfiguration.usePddl) {
@@ -46,10 +46,10 @@ export class DesiresManager {
                 await this.generatePickupDesiresWithPDDL();
             }
         } else {
+            this.generateDeliveryDesires();
             this.generatePickupDesires();
         }
 
-        //this.generateExplorationDesires();
         InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
     }
 
@@ -74,7 +74,7 @@ export class DesiresManager {
             this.beliefs.carryingParcelIds?.length &&
             deliveryPoint.position.equals(this.beliefs.myPosition)
         ) {
-            const putDownDesire = Desire.putDownParcel(
+            const putDownDesire = Desire.deliverParcel(
                 DesirePriorities.PRIORITY_DELIVERY, // High priority
                 deliveryPoint.position,
                 this.beliefs.carryingParcelIds,
@@ -186,25 +186,15 @@ export class DesiresManager {
             return;
         }
 
-        // If already at parcel position, generate PICKUP desire
-        if (bestParcel.position.equals(this.beliefs.myPosition)) {
-            const pickupDesire: Desire = Desire.pickupParcel(
-                DesirePriorities.PRIORITY_PICKUP, // Highest priority
-                bestParcel.position,
-                (bestParcel.context.parcel as Parcel).id,
-            );
+        const pickupDesire: Desire = Desire.pickupParcel(
+            bestParcel.position.equals(this.beliefs.myPosition)
+                ? DesirePriorities.PRIORITY_PICKUP // Highest priority
+                : DesirePriorities.PICKUP, // Medium priority
+            bestParcel.position,
+            (bestParcel.context.parcel as Parcel).id,
+        );
 
-            this._activeDesires.add(pickupDesire, pickupDesire.priority);
-        } else {
-            // Otherwise, generate MOVE desire to get to the parcel
-            const moveDesire = Desire.pickupParcel(
-                DesirePriorities.PICKUP, // Medium priority
-                bestParcel.position,
-                (bestParcel.context.parcel as Parcel).id,
-            );
-
-            this._activeDesires.add(moveDesire, moveDesire.priority);
-        }
+        this._activeDesires.add(pickupDesire, pickupDesire.priority);
     }
 
     private evaluateDetourPickups(): void {
@@ -254,44 +244,58 @@ export class DesiresManager {
         }
 
         // Use Fast Downward planner to find parcels worth picking up en route to delivery
-        const parcelsToPickup: PositionWithDistance[] =
+        const parcelsToPickup: HashMap<Position, PositionWithDistance[]> =
             await this.beliefs.generatePickupParcelsWithPDDL();
 
         // If no parcels found, return
-        if (!parcelsToPickup?.length) {
+        if (parcelsToPickup?.isEmpty) {
             return;
         }
 
         // Generate desires for each parcel, with priority based on their order in the plan
-        for (const parcel of parcelsToPickup) {
-            // If already at parcel position, generate high priority PICKUP desire
-            if (parcel.position.equals(this.beliefs.myPosition)) {
-                const pickupDesire: Desire = Desire.pickupParcel(
-                    DesirePriorities.PRIORITY_PICKUP, // Highest priority
-                    parcel.position,
-                    parcel.context.parcel.id,
-                );
-                this._activeDesires.add(pickupDesire, pickupDesire.priority);
-            } else {
-                // Calculate priority based on pickup order, net benefit, and action type
-                // Earlier pickups and higher net benefits get higher priority
-                // Regular pick-up actions are prioritized over pick-up-any actions
-                const orderFactor = Math.max(5 - parcel.context.pickupOrder, 0); // 4, 3, 2, 1, 0 for orders 1-5+
-                const benefitFactor = Math.floor(parcel.context.netBenefit / 10);
-                const actionBonus = parcel.context.action === "pick-up" ? 5 : 0;
+        for (const [delivery, pickUps] of parcelsToPickup.entries()) {
+            const parcelIds: string[] = [];
+            for (const parcel of pickUps) {
+                parcelIds.push(parcel.context.parcel.id);
 
-                const priority = Math.min(
-                    DesirePriorities.PICKUP + orderFactor + benefitFactor + actionBonus,
-                    DesirePriorities.PRIORITY_PICKUP - 1,
-                );
+                if (parcel.position.equals(this.beliefs.myPosition)) {
+                    const pickupDesire: Desire = Desire.pickupParcel(
+                        DesirePriorities.PRIORITY_PICKUP, // Highest priority
+                        parcel.position,
+                        parcel.context.parcel.id,
+                    );
+                    this._activeDesires.add(pickupDesire, pickupDesire.priority);
+                } else {
+                    // Calculate priority based on pickup order, net benefit, and action type
+                    // Earlier pickups and higher net benefits get higher priority
+                    // Regular pick-up actions are prioritized over pick-up-any actions
+                    const orderFactor = Math.max(5 - parcel.context.pickupOrder, 0); // 4, 3, 2, 1, 0 for orders 1-5+
+                    const benefitFactor = Math.floor(parcel.context.netBenefit / 10);
+                    const actionBonus = parcel.context.action === "pick-up" ? 5 : 0;
 
-                const moveDesire = Desire.pickupParcel(
-                    priority,
-                    parcel.position,
-                    parcel.context.parcel.id,
-                );
-                this._activeDesires.add(moveDesire, moveDesire.priority);
+                    const priority = Math.min(
+                        DesirePriorities.PICKUP + orderFactor + benefitFactor + actionBonus,
+                        DesirePriorities.PRIORITY_PICKUP - 1,
+                    );
+
+                    const moveDesire: Desire = Desire.pickupParcel(
+                        priority,
+                        parcel.position,
+                        parcel.context.parcel.id,
+                    );
+                    this._activeDesires.add(moveDesire, moveDesire.priority);
+                }
             }
+
+            if (!parcelIds?.length) continue;
+
+            const moveDesire: Desire = Desire.deliverParcel(
+                DesirePriorities.DELIVERY,
+                delivery,
+                parcelIds,
+            );
+
+            this._activeDesires.add(moveDesire, moveDesire.priority);
         }
     }
 

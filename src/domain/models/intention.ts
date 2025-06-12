@@ -33,8 +33,9 @@ export class Intention extends AbstractHashable implements Hashable {
     private readonly _serializedType: string;
 
     constructor(
-        readonly type: IntentionTypes,
-        readonly position: Position,
+        public type: IntentionTypes,
+        public position: Position,
+        public subIntentions: Intention[] = [],
         public _context?: any,
     ) {
         super();
@@ -46,7 +47,7 @@ export class Intention extends AbstractHashable implements Hashable {
      * @param position  the destination position
      */
     static move(position: Position): Intention {
-        return new Intention(IntentionTypes.MOVE, position);
+        return new Intention(IntentionTypes.MOVE, position, [Intention.pickUp(position)]);
     }
 
     /**
@@ -54,7 +55,7 @@ export class Intention extends AbstractHashable implements Hashable {
      * @param position
      */
     static deliver(position: Position): Intention {
-        return new Intention(IntentionTypes.DELIVER, position);
+        return new Intention(IntentionTypes.DELIVER, position, [Intention.putDown(position)]);
     }
 
     /**
@@ -138,6 +139,7 @@ export class Intention extends AbstractHashable implements Hashable {
 
     set context(value: any) {
         this._context = value;
+        this.subIntentions.forEach((intention: Intention) => (intention.context = value));
     }
 
     /**
@@ -146,6 +148,25 @@ export class Intention extends AbstractHashable implements Hashable {
      */
     hasContext(): boolean {
         return !!this._context;
+    }
+
+    /**
+     * Move the intention ahead promoting the first subintention as the main one
+     * @returns TRUE if there was a promotion. FALSE otherwise
+     */
+    promote(): boolean {
+        if (!this.subIntentions?.length) {
+            return false;
+        }
+
+        const subIntention: Intention = this.subIntentions.shift();
+
+        this.type = subIntention.type;
+        this.context = subIntention.context;
+        this.position = subIntention.position;
+        this.subIntentions = subIntention.subIntentions;
+
+        return true;
     }
 
     /**

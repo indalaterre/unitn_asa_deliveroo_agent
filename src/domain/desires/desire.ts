@@ -76,16 +76,6 @@ export class Desire extends AbstractHashable implements Hashable {
     // Handoff is now handled as part of the DELIVER_PARCEL desire
 
     /**
-     * Creates a desire to put down parcels at a delivery point
-     * @param priority The priority of the desire
-     * @param position The position of the delivery point
-     * @param parcelIds The IDs of the parcels to put down
-     */
-    static putDownParcel(priority: number, position: Position, parcelIds: string[]): Desire {
-        return new Desire(DesireTypes.PUT_DOWN_PARCEL, priority, position, { parcelIds });
-    }
-
-    /**
      * Checks if this desire is equal to another
      * @param other The other desire to compare with
      */
