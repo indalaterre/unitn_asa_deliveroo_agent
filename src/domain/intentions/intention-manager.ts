@@ -4,6 +4,7 @@ import { type Desire, DesirePriorities, DesireTypes, type DesiresManager } from 
 import { type Agent, GameConfiguration, type Parcel } from "@domain/models";
 import type { Directions, Position } from "@domain/models/environment";
 import type { HandoffCoordinator, HandoffRequest } from "@domain/models/handoff-coordinator";
+import { HandoffActionRequire, HandoffUpdateType } from "@domain/models/handoff-coordinator";
 import { Intention, IntentionTypes } from "@domain/models/intention";
 import { PriorityQueue } from "@domain/models/priority-queue";
 import type { StatisticsLogger } from "@domain/models/statistics-logger";
@@ -59,6 +60,11 @@ export class IntentionManager {
         InternalEventManager.on("desire:failed", (desire: Desire) => {
             this.handleDesireFailure(desire);
         });
+
+        // Listen for desire failures
+        InternalEventManager.on("handoff:completed", (requestId: string) => {
+            this.handleHandoffCompleted(requestId);
+        });
     }
 
     /**
@@ -89,7 +95,11 @@ export class IntentionManager {
             console.log(`Current intention: ${this.currentIntention.toString()}`);
 
             // Execute the intention
-            const success: boolean = await this.executeIntention(this.currentIntention);
+            const success: boolean = await this.executeIntention(this._currentIntention).catch((error) => {
+                console.log(`executeIntention error: ${error}`);
+                return false;
+            });
+
             if (!success) {
                 // Record failure
                 this._currentIntention.addFailure();
@@ -104,6 +114,18 @@ export class IntentionManager {
                     );
                     if (relatedDesire) {
                         this.desiresManager.markDesireAsFailed(relatedDesire);
+                    }
+
+                    if (this.handoffCoordinator.hasActiveHandoff() && (this._currentIntention.type == IntentionTypes.PICKUP_HANDOFF || this._currentIntention.type == IntentionTypes.PUT_DOWN_HANDOFF)) {
+                        await this.handoffCoordinator.createHandofUpdate(
+                            this.beliefs.myId,
+                            this._currentIntention.context.handoffRequestId,
+                            this._currentIntention.context.partnerId,
+                            HandoffUpdateType.CANCELED,
+                        );
+
+                        console.log(`handleDesireFailure drop handoff`);
+                        this.handoffCoordinator.completeHandoff(this._currentIntention.context.handoffRequestId, false);
                     }
 
                     this._currentIntention = null;
@@ -146,9 +168,17 @@ export class IntentionManager {
                 this.generatePutDownIntention(desire);
                 break;
 
-            case DesireTypes.EXPLORE_ENVIRONMENT:
-                this.generateExploreIntention(desire);
-                break;
+                case DesireTypes.EXPLORE_ENVIRONMENT:
+                    this.generateExploreIntention(desire);
+                    break;
+
+                case DesireTypes.PICKUP_HANDOFF:
+                    this.generatePickupHandoffIntention(desire);
+                    break;
+
+                case DesireTypes.PUT_DOWN_HANDOFF:
+                    await this.generatePutDownHandoffIntention(desire);
+                    break;
         }
 
         // Emit event that intentions have been updated
@@ -161,81 +191,11 @@ export class IntentionManager {
      * @private
      */
     private async generateDeliverIntention(desire: Desire): Promise<void> {
-        // Check if this delivery involves a handoff
-        if (desire.context?.handoff) {
-            // Extract handoff information
-            const { partnerId, meetingPosition } = desire.context.handoff;
+        // Regular delivery without handoff
+        const intention: Intention = Intention.deliver(desire.position);
+        this.processMovingIntention(intention, desire);
 
-            // Create a handoff request if not already active
-            if (!this.handoffCoordinator.hasActiveHandoff()) {
-                const friendAgent: Agent = this.beliefs.getAgent(partnerId);
-                if (!friendAgent?.position) {
-                    // Fall back to regular delivery if partner not found
-                    const regularIntention: Intention = Intention.deliver(desire.position);
-                    this.processMovingIntention(regularIntention, desire);
-
-                    this.addIntentionToQueue(regularIntention, desire.priority);
-                    return;
-                }
-
-                // Calculate meeting position (midpoint between agents)
-                const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
-                    friendAgent.position,
-                );
-
-                if (!handoffPaths || handoffPaths.length < 2) {
-                    // Fall back to regular delivery if path calculation fails
-                    const regularIntention: Intention = Intention.deliver(desire.position);
-                    this.processMovingIntention(regularIntention, desire);
-
-                    this.addIntentionToQueue(regularIntention, desire.priority);
-                    return;
-                }
-
-                const secondsToMeeting: number =
-                    (handoffPaths[0].length + handoffPaths[1].length) *
-                    GameConfiguration.movementDuration.seconds;
-                const handoffBufferInSeconds: number = 2;
-
-                const meetingTime: number =
-                    Date.now() + (secondsToMeeting + handoffBufferInSeconds) * 1000;
-
-                await this.handoffCoordinator.createHandoffRequest(
-                    this.beliefs.myId,
-                    partnerId,
-                    desire.context.parcelIds,
-                    meetingPosition,
-                    handoffPaths[0],
-                    Math.min(10, Math.ceil(desire.priority / 10)), // Urgency based on priority
-                    meetingTime,
-                );
-            }
-
-            // Create a MOVE intention to the meeting position
-            const intention: Intention = Intention.move(meetingPosition);
-            this.processMovingIntention(intention, desire);
-
-            intention.context = {
-                ...intention.context,
-                isHandoff: true,
-                isInitiator: true,
-                partnerId: partnerId,
-            };
-
-            this.addIntentionToQueue(intention, desire.priority);
-        } else {
-            // Regular delivery without handoff
-            if (desire.priority !== DesirePriorities.PRIORITY_DELIVERY) {
-                const intention: Intention = Intention.deliver(desire.position);
-                this.processMovingIntention(intention, desire);
-                this.addIntentionToQueue(intention, desire.priority);
-            } else {
-                const putDown: Intention = Intention.putDown(desire.position);
-                putDown.context = desire.context;
-
-                this.addIntentionToQueue(putDown, desire.priority);
-            }
-        }
+        this._intentionQueue.add(intention, desire.priority);
     }
 
     /**
@@ -301,48 +261,123 @@ export class IntentionManager {
     }
 
     /**
-     * Sends a handoff response message to the initiator
-     * @param request The handoff request
-     * @param accepted Whether the request is accepted
-     * @param estimatedArrivalTime When the agent expects to arrive (if accepted)
+     * Generates an PICKUP_HANDOFF intention from a desire
+     * @param desire The desire to convert
      */
-    /**
-     * Sends a handoff confirmation message to the partner agent
-     * @param handoff The handoff request that was completed
-     * @param success Whether the handoff was successful
-     */
-    private async sendHandoffConfirmation(
-        handoff: HandoffRequest,
-        success: boolean,
-    ): Promise<void> {
+    private generatePickupHandoffIntention(desire: Desire): void {
+        const intention: Intention = Intention.pickUpHandoff(desire.position);
+
         try {
-            // Find the messenger in the actuator (assuming it's available)
-            const messenger = (this.actuator as any).messenger;
-            if (!messenger) {
-                console.error("Messenger not available in actuator");
+            if (this.handoffCoordinator.hasActiveHandoff()){
+
+                const activeHandoff = this.handoffCoordinator.getActiveHandoff();
+
+                this.processMovingIntention(intention, desire);
+
+                intention.context = {
+                    ...intention.context,
+                    handoffRequestId: desire.context.requestId,
+                    isHandoff: true,
+                    isInitiator: false,
+                    isReceiver: true,
+                    partnerId: desire.context.partnerId,
+                    timeToMeet: activeHandoff.timeToMeet,
+                };
+
+                if (this._intentionQueue.contains(intention))
+                    this._intentionQueue.remove(intention)
+
+                this._intentionQueue.add(intention, desire.priority);
+            } else {
+                console.log("generatePickupHandoffIntention NO activeHandoff");
+            }
+        } catch (error) {
+            console.log(`generatePickupHandoffIntention error: ${error}`);
+        }
+    }
+
+    /**
+     * Generates an PUT_DOWN_HANDOFF intention from a desire
+     * @param desire The desire to convert
+     */
+    private async generatePutDownHandoffIntention(desire: Desire): Promise<void> {
+
+        // Extract handoff information
+        const partnerId = desire.context.partnerId;
+        const meetingPosition = desire.position;
+
+        // Create a handoff request if not already active
+        if (!this.handoffCoordinator.hasActiveHandoff() && !this.handoffCoordinator.hasPendingRequests) {
+
+            const friendAgent: Agent = this.beliefs.getAgent(partnerId);
+            if (!friendAgent?.position) {
+                // Fall back to regular delivery if partner not found
+                const regularIntention: Intention = Intention.deliver(desire.position);
+                this.processMovingIntention(regularIntention, desire);
+
+                if (this._intentionQueue.contains(regularIntention))
+                    this._intentionQueue.remove(regularIntention)
+                this._intentionQueue.add(regularIntention, desire.priority);
                 return;
             }
 
-            // Determine the recipient (the other agent in the handoff)
-            const recipientId =
-                this.beliefs.myId === handoff.initiatorId
-                    ? handoff.receiverId
-                    : handoff.initiatorId;
-
-            // Send the handoff confirmation
-            await messenger.sendHandoffConfirm(
-                recipientId,
-                handoff.requestId,
-                handoff.parcelIds,
-                success,
-                this.beliefs.myPosition,
+            // Calculate meeting position (midpoint between agents)
+            const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
+                friendAgent.position,
             );
 
-            console.log(
-                `Sent handoff ${success ? "success" : "failure"} confirmation for request ${handoff.requestId}`,
-            );
-        } catch (error) {
-            console.error("Error sending handoff confirmation:", error);
+            if (!handoffPaths || handoffPaths.length < 2) {
+                // Fall back to regular delivery if path calculation fails
+                const regularIntention: Intention = Intention.deliver(desire.position);
+                this.processMovingIntention(regularIntention, desire);
+
+                if (this._intentionQueue.contains(regularIntention))
+                    this._intentionQueue.remove(regularIntention)
+                this._intentionQueue.add(regularIntention, desire.priority);
+                return;
+            }
+
+            const secondsToMeeting: number =
+                (handoffPaths[0].length + handoffPaths[1].length) *
+                GameConfiguration.movementDuration.seconds;
+            const handoffBufferInSeconds: number = 3;
+
+            const meetingTime: number =
+                Date.now() + (secondsToMeeting + handoffBufferInSeconds) * 1000;
+
+            await this.handoffCoordinator.createHandoffRequest(
+                this.beliefs.myId,
+                partnerId,
+                desire.context.parcelIds,
+                meetingPosition,
+                Math.min(10, Math.ceil(desire.priority / 10)), // Urgency based on priority
+                meetingTime,
+                HandoffActionRequire.MOVE,
+            )
+        }
+
+        const activeHandoff = this.handoffCoordinator.getActiveHandoff();
+
+        if (activeHandoff) {
+            const intention: Intention = Intention.putDownHandoff(desire.position);
+
+            this.processMovingIntention(intention, desire);
+
+            intention.context = {
+                ...intention.context,
+                handoffRequestId: activeHandoff.requestId,
+                isHandoff: true,
+                isInitiator: true,
+                isReceiver: false,
+                partnerId: desire.context.partnerId,
+                timeToMeet: activeHandoff.timeToMeet,
+            };
+
+            if (this._intentionQueue.contains(intention))
+                    this._intentionQueue.remove(intention)
+            this._intentionQueue.add(intention, desire.priority);
+        } else {
+            console.log("generatePutDownHandoffIntention waiting response")
         }
     }
 
@@ -376,7 +411,14 @@ export class IntentionManager {
             case IntentionTypes.EXPLORE:
                 // These intentions are always valid
                 return true;
-
+            case IntentionTypes.PICKUP_HANDOFF:
+            case IntentionTypes.PUT_DOWN_HANDOFF:
+                // Check if we are on time
+                if (this.handoffCoordinator.hasActiveHandoff()){
+                    const activeHandoff = this.handoffCoordinator.getActiveHandoff();
+                    return activeHandoff.expiresAt > Date.now();
+                }
+                return false;
             default:
                 return false;
         }
@@ -402,7 +444,9 @@ export class IntentionManager {
             case IntentionTypes.PUT_DOWN:
                 // These intentions are complete after a successful execution
                 return true;
-
+            case IntentionTypes.PICKUP_HANDOFF:
+            case IntentionTypes.PUT_DOWN_HANDOFF:
+                return true;
             default:
                 return false;
         }
@@ -418,101 +462,8 @@ export class IntentionManager {
             case IntentionTypes.MOVE:
             case IntentionTypes.DELIVER:
             case IntentionTypes.EXPLORE:
-                // Check if this is a handoff-related move
-                if (intention.hasContext() && intention.context.isHandoff) {
-                    // If at the meeting position, handle the handoff process
-                    if (this.beliefs.myPosition.equals(intention.position)) {
-                        // Get the handoff request ID from context
-                        const handoffRequestId = intention.context.handoffRequestId;
-                        if (!handoffRequestId) {
-                            console.error("Missing handoff request ID in intention context");
-                            return false;
-                        }
 
-                        // Get the active handoff
-                        const activeHandoff: HandoffRequest =
-                            this.handoffCoordinator.getActiveHandoff();
-                        if (!activeHandoff || activeHandoff.requestId !== handoffRequestId) {
-                            console.error(
-                                "Handoff request not found or doesn't match active handoff",
-                            );
-                            return false;
-                        }
-
-                        // Handle based on role (initiator or receiver)
-                        if (intention.context.isInitiator) {
-                            // We're the initiator - put down parcels for the other agent to pick up
-                            console.log(
-                                `Initiating handoff of parcels ${activeHandoff.parcelIds.join(", ")} at ${intention.position}`,
-                            );
-
-                            // Only put down the specific parcels for this handoff
-                            const parcelsDropped = await this.actuator.putDown(
-                                activeHandoff.parcelIds,
-                            );
-
-                            if (parcelsDropped.size === 0) {
-                                console.error("Failed to put down parcels for handoff");
-                                return false;
-                            }
-
-                            // Update our beliefs
-                            this.beliefs.updateDroppedParcels(parcelsDropped);
-
-                            // Wait a moment for the other agent to pick up
-                            await new Promise((resolve) => setTimeout(resolve, 1000));
-
-                            // Complete the handoff
-                            this.handoffCoordinator.completeHandoff(handoffRequestId, true);
-
-                            // Send confirmation
-                            await this.sendHandoffConfirmation(activeHandoff, true);
-
-                            console.log(`Handoff completed successfully at ${intention.position}`);
-                            return true;
-                        } else if (intention.context.isReceiver) {
-                            // We're the receiver - pick up parcels from the other agent
-                            console.log(
-                                `Receiving handoff of parcels ${activeHandoff.parcelIds.join(", ")} at ${intention.position}`,
-                            );
-
-                            // Try to pick up the parcels
-                            const pickupResult = await this.actuator.pickup();
-
-                            if (pickupResult.size === 0) {
-                                console.error("Failed to pick up parcels during handoff");
-
-                                // Complete the handoff as failed
-                                this.handoffCoordinator.completeHandoff(handoffRequestId, false);
-
-                                // Send confirmation of failure
-                                await this.sendHandoffConfirmation(activeHandoff, false);
-
-                                return false;
-                            }
-
-                            // Update our beliefs
-                            this.beliefs.updateCarriedParcelsAfterPickup(pickupResult);
-
-                            // Complete the handoff
-                            this.handoffCoordinator.completeHandoff(handoffRequestId, true);
-
-                            // Send confirmation
-                            await this.sendHandoffConfirmation(activeHandoff, true);
-
-                            console.log(`Handoff received successfully at ${intention.position}`);
-                            return true;
-                        } else {
-                            // Generic handoff handling (for backward compatibility)
-                            console.log(
-                                `At handoff position ${intention.position}, waiting for coordination`,
-                            );
-                            return true;
-                        }
-                    }
-                }
-
-                // Calculate a path to target
+                // Calculate path to target
                 return await this.moveTowards(intention);
 
             case IntentionTypes.PICK_UP:
@@ -526,7 +477,7 @@ export class IntentionManager {
                 // Execute put-down action
                 const carriedParcels: Parcel[] = this.beliefs.carriedParcels;
                 const parcelsToDrop: string[] = this.beliefs.carryingParcelIds;
-                const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
+                const parcelsDropped: Set<string> = (await this.actuator.putDown(parcelsToDrop));
 
                 // Calculate points earned from the actual parcel scores
                 let totalPointsEarned = 0;
@@ -551,8 +502,270 @@ export class IntentionManager {
 
                 return Promise.resolve(true);
 
+            case IntentionTypes.PUT_DOWN_HANDOFF:
+            {
+                const pickUpPartnerPosition = this.beliefs.partnerAdjacentTile(intention.context.partnerId);
+
+                // Get the handoff request ID from context
+                const handoffRequestId = intention.context.handoffRequestId;
+                if (!handoffRequestId) {
+                    console.error("Missing handoff request ID in intention context");
+                    return Promise.resolve(false);
+                }
+
+                // Partner is near
+                if (pickUpPartnerPosition) {
+                    // Get the active handoff
+                    const activeHandoff: HandoffRequest =
+                        this.handoffCoordinator.getActiveHandoff();
+                    if (!activeHandoff || activeHandoff.requestId !== handoffRequestId) {
+                        console.error(
+                            "Handoff request not found or doesn't match active handoff",
+                        );
+                        return Promise.resolve(false);
+                    }
+
+                    // We're the initiator - put down parcels for the other agent to pick up
+                    console.log(
+                        `Initiating handoff of parcels ${activeHandoff.parcelIds.join(", ")} at ${intention.position}`,
+                    );
+
+                    let positionToMove = null;
+                    for (const adjacentPosition of this.beliefs.myPosition.adjacent) {
+                        if (this.beliefs.map.isReachable(this.beliefs.myPosition, adjacentPosition) && !this.beliefs.isPositionOccupied(adjacentPosition)) {
+                            positionToMove = adjacentPosition;
+                            break;
+                        }
+                    }
+
+                    if (positionToMove == null) {
+
+                        let requiredPositionToMove = null;
+                        for (const adjacentPosition of pickUpPartnerPosition.adjacent) {
+                            if (this.beliefs.map.isReachable(pickUpPartnerPosition, adjacentPosition) && !this.beliefs.isPositionOccupied(adjacentPosition)) {
+                                requiredPositionToMove = adjacentPosition;
+                                break;
+                            }
+                        }
+                        // Ask to move away
+                        await this.handoffCoordinator.createHandofUpdate(
+                            this.beliefs.myId,
+                            handoffRequestId,
+                            intention.context.partnerId,
+                            HandoffUpdateType.NEW_METTING_POINT,
+                            HandoffActionRequire.MOVE_AWAY,
+                            null,
+                            requiredPositionToMove,
+                            intention.context.meetingTime + 500,
+                        );
+
+                        await new Promise((resolve) => setTimeout(resolve, 500));
+
+                    } else {
+
+                        // Only put down the specific parcels for this handoff
+                        const parcelsDropped = await this.actuator.putDown(
+                            activeHandoff.parcelIds,
+                        );
+
+                        if (parcelsDropped.size === 0) {
+                            console.error("Failed to put down parcels for handoff");
+                            return Promise.resolve(false);
+                        }
+
+                        // Update our beliefs
+                        this.beliefs.updateDroppedParcels(parcelsDropped);
+
+                        await this.handoffCoordinator.createHandofUpdate(
+                            this.beliefs.myId,
+                            handoffRequestId,
+                            intention.context.partnerId,
+                            HandoffUpdateType.PARCELS_POSITION,
+                            HandoffActionRequire.PICK_UP,
+                            Array.from(parcelsDropped),
+                            this.beliefs.myPosition,
+                            intention.context.meetingTime + 500,
+                        );
+
+                        const nextDirection: Directions = this.beliefs.myPosition.getDirection(positionToMove);
+                        const moved = await this.actuator.move(nextDirection).catch((error) => {
+                            console.log(error.track);
+                            return false;
+                        });
+
+                        if (moved) {
+                            // Wait a moment for the other agent to pick up
+                            await new Promise((resolve) => setTimeout(resolve, 500));
+                            // Complete the handoff
+                            this.handoffCoordinator.completeHandoff(handoffRequestId, true);
+                            this._intentionQueue.remove(intention);
+                            console.log(`Handoff completed successfully at ${intention.position}`);
+                        }
+
+                        return Promise.resolve(true);
+                    }
+                } else {
+
+                    let atMeetingPoint = false;
+
+                    if (this.beliefs.myPosition.equals(intention.position)) {
+                        atMeetingPoint = true;
+                    }
+
+                    const friendAgent: Agent = this.beliefs.getAgent(intention.context.partnerId);
+                    const frientDistance = this.beliefs.map.distance(this.beliefs.myPosition, friendAgent.position);
+
+                    // Calculate meeting position (midpoint between agents)
+                    const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
+                        friendAgent.position,
+                    );
+
+                    if (handoffPaths?.length >= 2 && handoffPaths[1].length > 0) {
+
+                        const meetingPosition: Position = handoffPaths[1][0];
+                        if (frientDistance > GameConfiguration.agentVisibilityDistance) {
+
+                            const secondsToMeeting: number =
+                                (handoffPaths[0].length + handoffPaths[1].length) *
+                                GameConfiguration.movementDuration.seconds;
+                            const handoffBufferInSeconds: number = 3;
+
+                            const meetingTime: number =
+                            Date.now() + (secondsToMeeting + handoffBufferInSeconds) * 1000;
+
+                            await this.handoffCoordinator.createHandofUpdate(
+                                this.beliefs.myId,
+                                handoffRequestId,
+                                friendAgent.agentId,
+                                HandoffUpdateType.NEW_METTING_POINT,
+                                HandoffActionRequire.MOVE,
+                                null,
+                                meetingPosition,
+                                meetingTime,
+                            );
+                        } else {
+                            this.handoffCoordinator.moveTowardFrined(meetingPosition);
+                        }
+                    } else {
+                        return Promise.resolve(false);
+                    }
+                    //return Promise.resolve(true);
+
+                    // Calculate path to target
+                    return await this.moveTowards(intention);
+                }
+            }
+
+            case IntentionTypes.PICKUP_HANDOFF:
+            {
+                // Get the handoff request ID from context
+                const handoffRequestId = intention.context.handoffRequestId;
+                if (!handoffRequestId) {
+                    console.error("Missing handoff request ID in intention context");
+                    return Promise.resolve(false);
+                }
+
+                if (this.handoffCoordinator.hasActiveHandoff()) {
+
+                    const activeHandoff = this.handoffCoordinator.getActiveHandoff();
+
+                    switch (activeHandoff.actionRequired) {
+                        case HandoffActionRequire.MOVE:
+
+                            if (this.handoffCoordinator.hasActiveHandoff() && this.beliefs.myPosition.equals(intention.position)) {
+
+                                const friendAgent: Agent = this.beliefs.getAgent(intention.context.partnerId);
+
+                                const frientDistance = this.beliefs.map.distance(this.beliefs.myPosition, friendAgent.position);
+
+                                // Calculate meeting position (midpoint between agents)
+                                const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
+                                    friendAgent.position,
+                                );
+
+                                if (handoffPaths?.length >= 2 && handoffPaths[1].length > 0) {
+
+                                    if (frientDistance > GameConfiguration.agentVisibilityDistance) {
+                                        const meetingPosition: Position = handoffPaths[1][0];
+
+                                        const secondsToMeeting: number =
+                                            (handoffPaths[0].length + handoffPaths[1].length) *
+                                            GameConfiguration.movementDuration.seconds;
+                                        const handoffBufferInSeconds: number = 3;
+
+                                        const meetingTime: number =
+                                        Date.now() + (secondsToMeeting + handoffBufferInSeconds) * 1000;
+
+                                        await this.handoffCoordinator.createHandofUpdate(
+                                            this.beliefs.myId,
+                                            intention.context.handoffRequestId,
+                                            friendAgent.agentId,
+                                            HandoffUpdateType.NEW_METTING_POINT,
+                                            HandoffActionRequire.MOVE,
+                                            null,
+                                            meetingPosition,
+                                            meetingTime,
+                                        );
+                                    } else {
+                                        const meetingPosition: Position = handoffPaths[0][handoffPaths[0].length -1];
+                                        this.handoffCoordinator.moveTowardFrined(meetingPosition);
+                                    }
+                                    return Promise.resolve(true);
+                                }
+                            }
+
+                            // Calculate path to target
+                            return await this.moveTowards(intention);
+
+                        case HandoffActionRequire.MOVE_AWAY:
+                        {
+                            const moved = await this.moveTowards(intention);
+
+                            await new Promise((resolve) => setTimeout(resolve, 300));
+
+                            return moved;
+                        }
+
+                        case HandoffActionRequire.PICK_UP:
+                            // Wait a moment for the other agent to put down
+                            await new Promise((resolve) => setTimeout(resolve, 300));
+
+                            // Synchronize beliefs
+                            this.beliefs.synchronizeKnownAgents();
+                            this.beliefs.synchronizeKnownParcels();
+
+                            const nextDirection: Directions = this.beliefs.myPosition.getDirection(intention.position);
+                            let moved = await this.actuator.move(nextDirection).catch((error) => {
+                                console.log(error.track);
+                                return false;
+                            });
+
+                            // Try to pick up the parcels
+                            const pickupResult = await this.actuator.pickup()
+                            if (pickupResult.size === 0) {
+                                console.error("Failed to pick up parcels during handoff")
+                                // Complete the handoff as failed
+                                this.handoffCoordinator.completeHandoff(handoffRequestId, false)
+                                this._intentionQueue.remove(intention);
+                                return Promise.resolve(false);
+                            }
+
+                            // Update our beliefs
+                            this.beliefs.updateCarriedParcelsAfterPickup(pickupResult);
+
+                            this.handoffCoordinator.completeHandoff(handoffRequestId, true);
+                            this._intentionQueue.remove(intention);
+                            return Promise.resolve(true);
+                        default:
+                            console.error("Missing handoff action required");
+                            break;
+                    }
+                }
+
+                return Promise.resolve(false);
+            }
             default:
-                return false;
+                return Promise.resolve(false);
         }
     }
 
@@ -564,12 +777,10 @@ export class IntentionManager {
     private async moveTowards(intention: Intention): Promise<boolean> {
         let nextPosition: Position = intention.context?.path?.shift();
         if (!nextPosition) {
+            if (!this.beliefs.myPosition.equals(intention.position))
+                return false;
             //The intention has no more steps
             return true;
-        }
-
-        if (!intention.context?.path?.length) {
-            const a = 1;
         }
 
         if (
@@ -600,7 +811,10 @@ export class IntentionManager {
         }
 
         const nextDirection: Directions = this.beliefs.myPosition.getDirection(nextPosition);
-        const successfulMove: boolean = await this.actuator.move(nextDirection);
+        const successfulMove: boolean = await this.actuator.move(nextDirection).catch((error) => {
+            console.log(error.track);
+            return false;
+        });
         if (successfulMove) {
             this.beliefs.synchronizeMyPosition(nextPosition);
         }
@@ -637,6 +851,19 @@ export class IntentionManager {
                 desire.position?.equals(intention.position) &&
                 JSON.stringify(desire.context) === JSON.stringify(intention.context)
             ) {
+                if (intention.type == IntentionTypes.PICKUP_HANDOFF || intention.type == IntentionTypes.PUT_DOWN_HANDOFF) {
+                    if (this.handoffCoordinator.hasActiveHandoff()) {
+                        this.handoffCoordinator.createHandofUpdate(
+                            this.beliefs.myId,
+                            intention.context.handoffRequestId,
+                            intention.context.partnerId,
+                            HandoffUpdateType.CANCELED,
+                        );
+
+                        console.log(`handleDesireFailure drop handoff`);
+                        this.handoffCoordinator.completeHandoff(intention.context.handoffRequestId, false);
+                    }
+                }
                 this._intentionQueue.remove(intention);
             }
         }
@@ -648,6 +875,16 @@ export class IntentionManager {
             JSON.stringify(desire.context) === JSON.stringify(this._currentIntention.context)
         ) {
             this._currentIntention = null;
+        }
+    }
+
+    private handleHandoffCompleted(requestId: string): void {
+        if (this._intentionQueue.hasElementOfType(IntentionTypes.PICKUP_HANDOFF)) {
+            this._intentionQueue.removeElementsOfType(IntentionTypes.PICKUP_HANDOFF);
+        }
+
+        if (this._intentionQueue.hasElementOfType(IntentionTypes.PUT_DOWN_HANDOFF)) {
+            this._intentionQueue.removeElementsOfType(IntentionTypes.PUT_DOWN_HANDOFF);
         }
     }
 

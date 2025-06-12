@@ -161,7 +161,7 @@ export class BeliefContainer {
     private _agentsToBeSynchronized: HashSet<Agent> = new HashSet();
 
     constructor(
-        private readonly playerInfo: PlayerInfo,
+        public readonly playerInfo: PlayerInfo,
         public readonly map: MatchMap,
     ) {
         this._ownPosition = playerInfo.position;
@@ -181,6 +181,9 @@ export class BeliefContainer {
      * @returns TRUE if the agent is carrying at least one parcel
      */
     get isCarrying(): boolean {
+
+        this._carriedParcels = this._carriedParcels.filter((parcel) => !parcel.expired);
+
         return !!this._carriedParcels?.length;
     }
 
@@ -188,6 +191,9 @@ export class BeliefContainer {
      * @returns the id of the parcel being carried
      */
     get carryingParcelIds(): string[] {
+
+        this._carriedParcels = this._carriedParcels.filter((parcel) => !parcel.expired);
+
         return this._carriedParcels.map((parcel: Parcel) => parcel.id);
     }
 
@@ -344,7 +350,7 @@ export class BeliefContainer {
                     const path: Position[] = this.map.calculatePath(
                         requestPosition,
                         tilePosition,
-                        blockedDeliveries?.all,
+                        blockedDeliveries?.all.concat(this.getOccupiedPositions()),
                     );
                     const distance = this.map.distanceIfPossible(requestPosition, tilePosition);
 
@@ -358,7 +364,7 @@ export class BeliefContainer {
                     // Calculate competitive score using the delivery point manager
                     const competitiveScore = this._deliveryPointManager.calculateCongestionScore(
                         tilePosition,
-                        distance ?? Number.POSITIVE_INFINITY,
+                        distance /*?? Number.POSITIVE_INFINITY*/,
                     );
 
                     // Get additional agent density from the surrounding area
@@ -375,7 +381,7 @@ export class BeliefContainer {
                     // The sorting function will handle prioritization
 
                     return {
-                        distance: distance || Number.POSITIVE_INFINITY,
+                        distance: distance /*|| Number.POSITIVE_INFINITY*/,
                         position: tilePosition,
                         context: {
                             weightedDistance: weightedScore,
@@ -822,6 +828,10 @@ export class BeliefContainer {
             reachableParcels.map((parcel: Parcel) => parcel.id),
         );
 
+        if (reachableParcels.length == 0){
+            return;
+        }
+
         const visibility: number = GameConfiguration.parcelVisibilityDistance;
 
         //This set of arrays is meant to detect changes in parcel beliefs in order to fire "changed belief" event
@@ -958,6 +968,11 @@ export class BeliefContainer {
         return true;
     }
 
+    /**
+     * 
+     * @param pickedParcelIds 
+     * @returns 
+     */
     updateCarriedParcelsAfterPickup(pickedParcelIds: Set<string>) {
         for (const parcelId of pickedParcelIds) {
             const parcel: Parcel = this.freeParcelsById.get(parcelId);
@@ -990,6 +1005,11 @@ export class BeliefContainer {
 
         // Find the best delivery point for our parcels
         const bestDelivery: PositionWithDistance = this.findBestDelivery();
+
+        if (bestDelivery.distance < this.findBestDelivery(agentPosition).distance) {
+            return -1;
+        }
+
         const myPathToAgent: Position[][] = this.map.calculateMidPointPaths(
             this.myPosition,
             agentPosition,
@@ -1018,7 +1038,7 @@ export class BeliefContainer {
 
         //We consider as meeting position the final destination of the agent path to at the middle of the path
         const myDistanceToMeeting: number = myPathToDelivery[0].length;
-        const friendDistanceToMeeting: number = myDistanceToMeeting[1].length;
+        const friendDistanceToMeeting: number = myPathToDelivery[1].length;
 
         //We now calculate the benefit of a handoff operation
         /*
@@ -1033,7 +1053,7 @@ export class BeliefContainer {
 
          */
         const timeSavings: number =
-            myDistanceToMeeting - (myDistanceToMeeting + friendDistanceToMeeting);
+            myDistanceToMeeting; //+ friendDistanceToMeeting;
 
         const totalParcelValue: number = this._carriedParcels.reduce(
             (sum: number, parcel: Parcel) => sum + parcel.currentScore,
@@ -1041,7 +1061,9 @@ export class BeliefContainer {
         );
 
         // We increase the priority of the handoff if parcels are closer to expiration (their score is low)
-        return timeSavings - Math.floor(totalParcelValue / 10);
+        //return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
+
+        return timeSavings;
     }
 
     //////// AGENT
@@ -1198,6 +1220,33 @@ export class BeliefContainer {
      */
     isTrustedAgent(agentId: string): boolean {
         return this._trustedAgentIds.has(agentId);
+    }
+
+    partnerAdjacentTile(partnerId: string): Position | null {
+
+        if (this.isTrustedAgent(partnerId)) {
+
+            const partner = this.agents.get(partnerId);
+            const partnerPosition = this.positionByAgent.get(partner);
+
+            const adjacentTiles = this.myPosition.adjacent;
+
+            let partnerFound = false;
+            for (const adjacentTile of adjacentTiles) {
+
+                if (adjacentTile.equals(partnerPosition)) {
+                    partnerFound = true;
+                    break;
+                }
+
+            }
+
+            if (partnerFound) {
+                return partnerPosition;
+            }
+        }
+
+        return null;
     }
 
     private calculateTileExplorationFactor(position: Position) {

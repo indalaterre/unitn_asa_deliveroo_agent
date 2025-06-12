@@ -12,14 +12,7 @@ import * as path from "node:path";
 import type { CryptoConfiguration } from "@domain/models/configurations";
 
 export class Cipher {
-    /**
-     * The private key used to encrypt the messaged
-     */
     publicKey: string;
-
-    /**
-     * The private key used to decrypt the messages
-     */
     privateKey: string;
 
     constructor(config: CryptoConfiguration) {

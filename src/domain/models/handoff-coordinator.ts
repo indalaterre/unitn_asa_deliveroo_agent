@@ -1,10 +1,9 @@
 import type { BeliefContainer } from "@domain/beliefs";
 import type { Messenger } from "@domain/communication/messenger";
-import type { DesiresManager } from "@domain/desires";
 import { GameConfiguration } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import { Intention } from "@domain/models/intention";
 import { v4 as uuidv4 } from "uuid";
+import { InternalEventManager } from "@utils/internal-event-manager";
 
 /**
  * Status of a handoff request
@@ -19,21 +18,54 @@ export enum HandoffStatus {
     EXPIRED = "expired",
 }
 
+export enum HandoffUpdateType {
+    NEW_METTING_POINT = "new_meeting_point",
+    PARCELS_POSITION = "parcels_position",
+    CANCELED = "canceled",
+    NEW_METTING_POINT_ACCEPTED = "new_meeting_point_accepted",
+    COMPLETED = "completed",
+}
+
+export enum HandoffActionRequire {
+    MOVE = "move",
+    MOVE_AWAY = "move away",
+    PICK_UP = "pick_up",
+}
+
+export interface HandoffResponse {
+    requestId: string;
+    initiatorId: string;
+    recipientIds: string[];
+    status: HandoffStatus;
+    meetingPosition?: Position;
+    estimatedArrivalTime?: number;
+}
+
+export interface BaseHandoff {
+    initiatorId: string;
+    receiverId: string;
+    meetingPosition?: Position;
+    timeToMeet?: number;
+    estimatedArrivalTime?: number;
+    parcelIds?: string[];
+    actionRequired?: HandoffActionRequire;
+}
+
+export interface HandoffUpdate extends BaseHandoff {
+    updateId: string;
+    handoffId: string;
+    updateType: HandoffUpdateType;
+}
+
 /**
  * Represents a handoff request between agents
  */
-export interface HandoffRequest {
+export interface HandoffRequest extends BaseHandoff {
     requestId: string;
-    initiatorId: string;
-    receiverId: string;
-    parcelIds: string[];
-    meetingPosition: Position;
-    meetingPath?: Position[];
     urgency: number;
     timeToMeet: number;
     expiresAt: number;
     status: HandoffStatus;
-    estimatedArrivalTime?: number;
 }
 
 /**
@@ -49,21 +81,57 @@ export class HandoffCoordinator {
     // Currently active handoff (if any)
     private activeHandoff: HandoffRequest | null = null;
 
+    // Outgoing handoff Update initiated by this agent
+    private outgoingUpdate: Map<string, HandoffUpdate> = new Map();
+
+    // Incoming handoff Update from other agents
+    private incomingUpdate: Map<string, HandoffUpdate> = new Map();
+
     constructor(
         private readonly messenger: Messenger,
-        private readonly beliefs: BeliefContainer,
-        private readonly desiresManager: DesiresManager,
+        private readonly beliefs: BeliefContainer
     ) {
         // Handle incoming handoff requests
         this.messenger.onHandoffRequestReceived(async (request: HandoffRequest) => {
             // Store the incoming request
             this.incomingRequests.set(request.requestId, request);
             // Process the incoming request (will be handled by the intention manager)
-            await this.handleHandoffRequest(request);
+            await this.handleHandoffRequest(request).catch(error => {
+                console.log(`handleHandoffRequest: ${error}`);  // TODO: Remove
+            });
+        });
+
+        // Handle incoming handoff response
+        this.messenger.onHandoffResponseReceived(async (response: HandoffResponse) => {
+            await this.handleHandoffResponse(response).catch(error => {
+                console.log(`handleHandoffRequest: ${error}`);  // TODO: Remove
+            });
+        });
+
+        // Handle incoming handoff update
+        this.messenger.onHandoffUpdateReceived(async (update: HandoffUpdate) => {
+            this.incomingUpdate.set(update.updateId, update);
+            await this.handleHandoffUpdate(update).catch(error =>{
+                console.log(`onHandoffUpdateReceived: ${error}`);  // TODO: Remove
+            });
         });
 
         // Set up periodic cleanup of expired requests
         setInterval(() => this.cleanupExpiredRequests(), 5000); // Check every 5 seconds
+    }
+
+    public get hasPendingRequests() {
+        this.outgoingRequests = new Map(
+            Array.from(this.outgoingRequests).filter(([key, value]) => {
+                return value.expiresAt > Date.now()
+            })
+        )
+
+        const result = Array.from(this.outgoingRequests).filter(([key, value]) => {
+                return value.status == HandoffStatus.PENDING
+            }).length > 0;
+
+        return result;
     }
 
     /**
@@ -71,7 +139,7 @@ export class HandoffCoordinator {
      * @param request The handoff request to evaluate
      * @returns True if the handoff appears feasible, false otherwise
      */
-    private evaluateHandoffFeasibility(request: HandoffRequest): boolean {
+    private evaluateHandoffFeasibility(request: BaseHandoff): boolean {
         // Basic feasibility checks that don't require the beliefs container
 
         // Check if the request is too urgent (meeting time is too soon)
@@ -82,9 +150,9 @@ export class HandoffCoordinator {
         }
 
         // Check if we already have an active handoff
-        if (this.activeHandoff) {
-            return false;
-        }
+        //if (this.activeHandoff) {
+        //    return false;
+        //}
 
         // Check if we can reach the meeting position
         if (this.beliefs.myPosition && request.meetingPosition) {
@@ -102,7 +170,7 @@ export class HandoffCoordinator {
             const distanceToMeeting = this.beliefs.myPosition.manhattanDistance(
                 request.meetingPosition,
             );
-            const timeNeededToReach = distanceToMeeting * 1000; // Rough estimate: 1 second per tile
+            const timeNeededToReach = distanceToMeeting * GameConfiguration.movementDuration.milliseconds;
 
             if (timeToMeeting < timeNeededToReach) {
                 return false;
@@ -119,9 +187,9 @@ export class HandoffCoordinator {
      * @param receiverId ID of the agent receiving the handoff
      * @param parcelIds IDs of parcels to hand off
      * @param meetingPosition Position where the handoff should occur
-     * @param meetingPath Path to the meeting position
      * @param urgency Urgency of the handoff (1-10)
      * @param timeToMeet When to meet (timestamp)
+     * @param actionRequired Action required 
      * @param expiresIn Time in milliseconds until this request expires
      * @returns The created handoff request
      */
@@ -130,9 +198,9 @@ export class HandoffCoordinator {
         receiverId: string,
         parcelIds: string[],
         meetingPosition: Position,
-        meetingPath: Position[],
         urgency: number,
         timeToMeet: number,
+        actionRequired: HandoffActionRequire,
         expiresIn = 30000, // Default to 30 seconds
     ): Promise<HandoffRequest> {
         const requestId = uuidv4();
@@ -144,11 +212,11 @@ export class HandoffCoordinator {
             receiverId,
             parcelIds,
             meetingPosition,
-            meetingPath,
             urgency,
             timeToMeet,
             expiresAt,
             status: HandoffStatus.PENDING,
+            actionRequired: actionRequired,
         };
 
         this.outgoingRequests.set(requestId, request);
@@ -195,19 +263,28 @@ export class HandoffCoordinator {
      * @param success Whether the handoff was successful
      * @returns The completed handoff request, or null if not found
      */
-    completeHandoff(requestId: string, success: boolean): HandoffRequest | null {
-        const request =
-            this.outgoingRequests.get(requestId) || this.incomingRequests.get(requestId);
-        if (!request) return null;
+    completeHandoff(requestId: string, success: boolean, send_message: boolean=false) {
+        //const request = this.outgoingRequests.get(requestId) || this.incomingRequests.get(requestId);
+        //if (!request) return null;
 
-        request.status = success ? HandoffStatus.COMPLETED : HandoffStatus.FAILED;
+        try {
+            const request = this.activeHandoff;
 
-        // Clean up the request
-        this.outgoingRequests.delete(requestId);
-        this.incomingRequests.delete(requestId);
-        this.activeHandoff = null;
+            request.status = success ? HandoffStatus.COMPLETED : HandoffStatus.FAILED;
 
-        return request;
+            if (send_message) {
+                this.sendHandoffConfirmation(this.activeHandoff);
+            }
+
+            // Clean up the request
+            this.outgoingRequests.delete(requestId);
+            this.incomingRequests.delete(requestId);
+            this.activeHandoff = null;
+
+            InternalEventManager.emit("handoff:completed", requestId);
+        } catch(error) {
+            console.log(`completeHandoff: ${error}`);
+        }
     }
 
     /**
@@ -215,7 +292,12 @@ export class HandoffCoordinator {
      * @returns The active handoff request, or null if none
      */
     getActiveHandoff(): HandoffRequest | null {
-        return this.activeHandoff;
+
+        if (this.hasActiveHandoff()){
+            return this.activeHandoff;
+        } else {
+            null;
+        }
     }
 
     /**
@@ -223,7 +305,10 @@ export class HandoffCoordinator {
      * @returns True if there is an active handoff
      */
     hasActiveHandoff(): boolean {
-        return this.activeHandoff !== null;
+        if (this.activeHandoff?.expiresAt < Date.now()) {
+            this.activeHandoff = null;
+        }
+        return this.activeHandoff != null;
     }
 
     /**
@@ -254,6 +339,7 @@ export class HandoffCoordinator {
      * @param request The handoff request to handle
      */
     async handleHandoffRequest(request: HandoffRequest): Promise<void> {
+
         // Handle incoming requests based on status
         if (request.status === HandoffStatus.PENDING) {
             // Evaluate if we should accept the handoff
@@ -276,34 +362,262 @@ export class HandoffCoordinator {
                 this.acceptIncomingRequest(request.requestId, estimatedArrivalTime);
 
                 // Send acceptance response
-                await this.messenger.sendHandoffConfirm(
-                    request.requestId,
-                    request.receiverId,
-                    request.initiatorId,
-                    estimatedArrivalTime,
+                await this.messenger.sendHandoffResponseMessage(
+                    {
+                        requestId: request.requestId,
+                        initiatorId: this.beliefs.myId,
+                        recipientIds: [request.initiatorId],
+                        status: HandoffStatus.ACCEPTED,
+                        estimatedArrivalTime: estimatedArrivalTime
+                    } as HandoffResponse
                 );
 
-                // Create a move intention to the meeting position
-                const intention: Intention = Intention.move(request.meetingPosition);
-                intention.context = {
-                    handoffRequestId: request.requestId,
-                    isHandoff: true,
-                    isReceiver: true, // Flag that we're receiving parcels
-                    initiatorId: request.initiatorId,
-                    parcelIds: request.parcelIds,
-                };
-
-                this.desiresManager.generateHandoffDesire(
-                    request.requestId,
-                    request.meetingPosition,
-                );
             } else {
                 // Reject the request
                 this.rejectIncomingRequest(request.requestId);
 
+                // Send reject response
+                await this.messenger.sendHandoffResponseMessage(
+                    {
+                        requestId: request.requestId,
+                        initiatorId: this.beliefs.myId,
+                        recipientIds: [request.initiatorId],
+                        status: HandoffStatus.REJECTED,
+                        estimatedArrivalTime: null
+                    } as HandoffResponse
+                );
+
                 //TODO: Here we need to send the handoff response for the rejection
-                throw Error("Handoff request rejected.");
+                //throw Error("Handoff request rejected.");
             }
+        }
+    }
+
+    /**
+     * Handles a handoff response from another agent
+     * @param response The handoff response to handle
+     */
+    async handleHandoffResponse(response: HandoffResponse): Promise<void> {
+
+        switch (response.status) {
+            case HandoffStatus.ACCEPTED:
+                
+                if (this.outgoingRequests.has(response.requestId)) {
+                    this.outgoingRequests.get(response.requestId).status = HandoffStatus.IN_PROGRESS;
+                    this.activeHandoff = this.outgoingRequests.get(response.requestId)
+                }
+
+                break;
+
+            case HandoffStatus.REJECTED:
+
+                this.completeHandoff(response.requestId, false);
+
+                break;
+
+            default:
+                console.log(`handleHandoffResponse not valid response status: ${response.status}`);
+        }
+
+        this.incomingRequests.delete(response.requestId);
+
+    }
+
+    async createHandofUpdate(
+        initiatorId: string,
+        handoffId: string,
+        receiverId: string,
+        updateType: HandoffUpdateType,
+        actionRequired: HandoffActionRequire = null,
+        parcelIds: string[] = null,
+        meetingPosition: Position = null,
+        timeToMeet: number = null,
+    ): Promise<HandoffUpdate> {
+        const updateId = uuidv4();
+
+        let update: HandoffUpdate = null;
+
+        switch (updateType) {
+            case HandoffUpdateType.NEW_METTING_POINT:
+            {
+                update = {
+                    updateId: updateId,
+                    handoffId: handoffId,
+                    initiatorId: initiatorId,
+                    receiverId: receiverId,
+                    actionRequired: actionRequired,
+                    meetingPosition: meetingPosition,
+                    timeToMeet: timeToMeet,
+                    updateType: updateType,
+                } as HandoffUpdate;
+
+                break;
+            }
+            case HandoffUpdateType.PARCELS_POSITION:
+            {
+                update = {
+                    updateId: updateId,
+                    handoffId: handoffId,
+                    initiatorId: initiatorId,
+                    receiverId: receiverId,
+                    actionRequired: HandoffActionRequire.PICK_UP,
+                    meetingPosition: meetingPosition,
+                    parcelIds: parcelIds,
+                    updateType: updateType,
+                } as HandoffUpdate;
+
+                break;
+            }
+            case HandoffUpdateType.CANCELED:
+            {
+                update = {
+                    updateId: updateId,
+                    handoffId: handoffId,
+                    initiatorId: initiatorId,
+                    receiverId: receiverId,
+                    updateType: updateType,
+                } as HandoffUpdate;
+
+                break;
+            }
+            case HandoffUpdateType.COMPLETED:
+            {
+                update = {
+                    updateId: updateId,
+                    handoffId: handoffId,
+                    initiatorId: initiatorId,
+                    receiverId: receiverId,
+                    updateType: updateType,
+                } as HandoffUpdate;
+
+                break;
+            }
+        }
+
+        await this.messenger.sendHandoffUpdateMessage(update);
+        this.outgoingUpdate.set(updateId, update);
+
+        console.log(`createHandofUpdate updateType: ${updateType}`);
+
+        return update;
+    }
+
+    async handleHandoffUpdate(update: HandoffUpdate) {
+
+        if (this.activeHandoff != null && this.activeHandoff.requestId == update.handoffId) {
+            console.log(`handleHandoffUpdate updateType: ${update.updateType}`);
+
+            switch (update.updateType) {
+                case HandoffUpdateType.NEW_METTING_POINT: {
+
+                    console.log(`handleHandoffUpdate meetingPosition: ${update.meetingPosition}`);
+
+                    const feasibility = this.evaluateHandoffFeasibility(update);
+
+                    console.log(`handleHandoffUpdate feasibility: ${feasibility}`);
+
+                    if (feasibility) {
+                        this.activeHandoff.meetingPosition = update.meetingPosition;
+                        this.activeHandoff.timeToMeet = update.timeToMeet;
+                        this.activeHandoff.actionRequired = update.actionRequired;
+
+                        await this.messenger.sendHandoffUpdateMessage({
+                            updateId: update.updateId,
+                            handoffId: update.handoffId,
+                            initiatorId: this.beliefs.myId,
+                            receiverId: update.initiatorId,
+                            updateType: HandoffUpdateType.NEW_METTING_POINT_ACCEPTED,
+                            actionRequired: HandoffActionRequire.MOVE,
+                        } as HandoffUpdate);
+                    } else {
+                        await this.messenger.sendHandoffUpdateMessage({
+                            updateId: update.updateId,
+                            handoffId: update.handoffId,
+                            initiatorId: this.beliefs.myId,
+                            receiverId: update.initiatorId,
+                            updateType: HandoffUpdateType.CANCELED,
+                        } as HandoffUpdate);
+
+                        this.completeHandoff(update.handoffId, false);
+                    }
+
+                    break;
+                }
+
+                case HandoffUpdateType.CANCELED: {
+                    this.activeHandoff.status = HandoffStatus.FAILED;
+                    this.completeHandoff(update.handoffId, false);
+
+                    break;
+                }
+
+                case HandoffUpdateType.COMPLETED: {
+                    this.activeHandoff.status = HandoffStatus.COMPLETED;
+                    this.completeHandoff(update.handoffId, true);
+
+                    console.log(`handleHandoffUpdate COMPLETED:`);
+                    this.beliefs.freeParcels.forEach((parcel) => {
+                        console.log(parcel.id);
+                    });
+
+                    break;
+                }
+
+                case HandoffUpdateType.PARCELS_POSITION: {
+                    this.activeHandoff.meetingPosition = update.meetingPosition;
+                    this.activeHandoff.actionRequired = update.actionRequired;
+
+                    break;
+                }
+
+                case HandoffUpdateType.NEW_METTING_POINT_ACCEPTED: {
+                        const outgoing = this.outgoingUpdate.get(update.updateId)
+                        this.activeHandoff.meetingPosition = outgoing.meetingPosition;
+                        this.activeHandoff.timeToMeet = outgoing.timeToMeet;
+
+                    break;
+                }
+            }
+        }
+
+        this.incomingUpdate.delete(update.updateId);
+    }
+
+    /**
+     * 
+     * @param friendPosition 
+     */
+    public moveTowardFrined(friendPosition: Position) {
+        this.activeHandoff.meetingPosition = friendPosition;
+    }
+
+    /**
+     * Sends a handoff confirmation message to the partner agent
+     * @param handoff The handoff request that was completed
+     * @param success Whether the handoff was successful
+     */
+    public async sendHandoffConfirmation(
+        handoff: HandoffRequest,
+    ): Promise<void> {
+        try {
+            // Determine the recipient (the other agent in the handoff)
+            const recipientId =
+                this.beliefs.myId === handoff.initiatorId
+                    ? handoff.receiverId
+                    : handoff.initiatorId;
+
+            await this.createHandofUpdate(
+                this.beliefs.myId,
+                handoff.requestId,
+                recipientId,
+                HandoffUpdateType.COMPLETED,
+            );
+
+            console.log(
+                `Sent handoff confirmation for request ${handoff.requestId}`,
+            );
+        } catch (error) {
+            console.error("Error sending handoff confirmation:", error);
         }
     }
 }

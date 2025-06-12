@@ -10,8 +10,8 @@ import { IntentionManager } from "./intentions";
 import type { MatchMap } from "./map";
 import { type Duration, GameConfiguration, type Parcel } from "./models";
 import type { Agent } from "./models/agent";
-import type { Directions, Position } from "./models/environment";
-import { HandoffCoordinator, type HandoffRequest } from "./models/handoff-coordinator";
+import { Position } from "./models/environment";
+import { HandoffCoordinator } from "./models/handoff-coordinator";
 import { StatisticsLogger } from "./models/statistics-logger";
 import type { PlayerInfo } from "./player-info";
 
@@ -71,15 +71,14 @@ export class PlayerBDI {
         // Initialize belief system
         this._beliefs = new BeliefContainer(playerInfo, matchMap);
 
-        // Initialize desires manager
-        this._desiresManager = new DesiresManager(this._beliefs);
-
         // Initialize handoff coordinator
         this._handoffCoordinator = new HandoffCoordinator(
             this.messenger,
-            this._beliefs,
-            this._desiresManager,
+            this._beliefs
         );
+
+        // Initialize desires manager
+        this._desiresManager = new DesiresManager(this._beliefs, this._handoffCoordinator);
 
         // Initialize intention manager
         this._intentionManager = new IntentionManager(
@@ -148,6 +147,8 @@ export class PlayerBDI {
             this._beliefs.queueParcelsSynchronization(parcels);
         });
 
+        sensor.onPlayerPositionUpdate(async (position: Position) => this.updatePlayerPosition(position));
+
         setInterval(async () => {
             if (this._beliefs.trustedAgents?.length) {
                 await this.messenger.sendParcelInfo(
@@ -188,6 +189,8 @@ export class PlayerBDI {
         // Handle hello messages
         this.messenger.onHelloMessageReceived(async (agent: Agent) => {
             if (this._beliefs.isTrustedAgent(agent.agentId)) {
+                this._beliefs.queueAgentsSynchronization([agent]);
+                this._beliefs.synchronizeKnownAgents();
                 return;
             }
 
@@ -234,75 +237,38 @@ export class PlayerBDI {
      */
     private async _run(): Promise<void> {
         while (this._isAlive) {
+            await new Promise((resolve) => setImmediate(resolve));
+
             // Synchronize beliefs
-            this._beliefs.synchronizeKnownAgents();
-            this._beliefs.synchronizeKnownParcels();
-
-            this._desiresManager.generateExplorationDesires();
-            // Generate desires based on current beliefs
-            //await this._desiresManager.generateDesires();
-
-            // Check if we need to execute a handoff
-            if (this._handoffCoordinator.hasActiveHandoff()) {
-                const handoffExecuted = await this.executeHandoff();
-                if (handoffExecuted) {
-                    // Reset current intention after handoff
-                    this._intentionManager.resetCurrentIntention();
-                    continue;
-                }
+            try {
+                this._beliefs.synchronizeKnownAgents();
+                this._beliefs.synchronizeKnownParcels();
+            } catch (error) {
+                console.log(`Synchronize beliefs: ${error}`)
             }
 
+            this._desiresManager.generateExplorationDesires();
+
             // Process intentions
-            await this._intentionManager.processIntentions();
+            await this._intentionManager.processIntentions().catch((error) => {
+                console.log(`Process intentions: ${error.stack}`);
+            });
         }
     }
 
     /**
-     * Executes a handoff
-     * @returns Promise that resolves to true if the handoff was executed, false otherwise
-     * @private
+     *
+     * @param position
      */
-    private async executeHandoff(): Promise<boolean> {
-        const handoff: HandoffRequest = this._handoffCoordinator.getActiveHandoff();
-        if (!handoff) {
-            return false;
-        }
-
-        // Check if we're at the meeting position
-        const atMeetingPosition: boolean = this._beliefs.myPosition.equals(handoff.meetingPosition);
-
-        if (!atMeetingPosition) {
-            const nextPosition: Position = handoff.meetingPath.shift();
-            const nextDirection: Directions = this._beliefs.myPosition.getDirection(nextPosition);
-            // Move towards meeting position
-            const success = await this.actuator.move(nextDirection);
-            return false; // Not complete yet
-        }
-
-        // Check if this is an incoming or outgoing handoff
-        const isIncoming = handoff.receiverId === this.playerInfo.id.toString();
-
-        if (isIncoming) {
-            // We're receiving parcel
-            // Wait for the initiator to put down the parcels
-            return false; // Not complete yet
-        } else {
-            // We're giving parcels
-            // Put down the parcels
-            const success: Set<string> = await this.actuator.putDown(handoff.parcelIds);
-
-            if (success) {
-                // Complete the handoff
-                this._handoffCoordinator.completeHandoff(handoff.requestId, true);
-                return true;
-            } else {
-                // Handoff failed
-                this._handoffCoordinator.completeHandoff(handoff.requestId, false);
-                return false;
-            }
-        }
+    updatePlayerPosition(position: Position) {
+        this.playerInfo.position = new Position(position.row, position.column);
+        this._beliefs.synchronizeMyPosition(this.playerInfo.position);
     }
 
+    /**
+     *
+     * @returns
+     */
     private async assignExplorationSectors(): Promise<void> {
         if (!this._canRecalculateMapSectors || !this._beliefs.isTheMaster) return;
 
@@ -339,6 +305,6 @@ export class PlayerBDI {
 
         //Assigning the remaining cluster to the current master agent
         const remainingCluster: ClusteredTiles = mapClusters.shift();
-        this._beliefs.explorationSector = remainingCluster.positions;
+        this._beliefs.explorationSector = remainingCluster?.positions;
     }
 }

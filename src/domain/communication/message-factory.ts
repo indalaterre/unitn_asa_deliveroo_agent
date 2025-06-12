@@ -1,11 +1,12 @@
 import type { Agent, Parcel } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import type { HandoffStatus } from "@domain/models/handoff-coordinator";
+import type { HandoffActionRequire, HandoffStatus, HandoffUpdateType } from "@domain/models/handoff-coordinator";
 import {
     type AgentPositionUpdate,
     type ExplorationSectorAssignment,
-    type HandoffConfirmMessage,
+    type HandoffResponseMessage,
     type HandoffRequestMessage,
+    type HandoffUpdateMessage,
     type HelloMessage,
     type Message,
     MessageType,
@@ -157,19 +158,21 @@ export class MessageFactory {
         timeToMeet: number,
         expiresAt: number,
         status: HandoffStatus,
+        actionRequired: HandoffActionRequire,
         estimatedArrivalTime?: number,
     ): HandoffRequestMessage {
         return {
             ...this.createBaseMessage(MessageType.HANDOFF_REQUEST, initiatorId, [receiverId]),
             type: MessageType.HANDOFF_REQUEST,
-            requestId,
-            parcelIds,
-            meetingPosition,
-            urgency,
-            timeToMeet,
-            expiresAt,
-            status,
-            estimatedArrivalTime,
+            requestId: requestId,
+            parcelIds: parcelIds,
+            meetingPosition: meetingPosition,
+            urgency: urgency,
+            timeToMeet: timeToMeet,
+            expiresAt: expiresAt,
+            status: status,
+            actionRequired: actionRequired,
+            estimatedArrivalTime: estimatedArrivalTime,
         };
     }
 
@@ -181,17 +184,51 @@ export class MessageFactory {
      * @param estimatedArrivalTime When the agent expects to arrive
      * @returns HandoffConfirmMessage object
      */
-    public static createHandoffConfirmMessage(
+    public static createHandoffResponseMessage(
         requestId: string,
         initiatorId: string,
-        recipientId: string,
-        estimatedArrivalTime: number,
-    ): HandoffConfirmMessage {
+        recipientIds: string[],
+        status: HandoffStatus,
+        meetingPosition: Position,
+        estimatedArrivalTime: number
+    ): HandoffResponseMessage {
         return {
-            ...this.createBaseMessage(MessageType.HANDOFF_CONFIRM, initiatorId, [recipientId]),
-            type: MessageType.HANDOFF_CONFIRM,
-            requestId,
-            estimatedArrivalTime,
+            ...this.createBaseMessage(MessageType.HANDOFF_RESPONSE, initiatorId, recipientIds),
+            type: MessageType.HANDOFF_RESPONSE,
+            status: status,
+            requestId: requestId,
+            meetingPosition: meetingPosition,
+            estimatedArrivalTime: estimatedArrivalTime,
+        };
+    }
+
+    /**
+     * Create a Handoff Confirm message
+     * @param requestId ID of the original request
+     * @param initiatorId ID of the agent that initiated the handoff
+     * @param recipientId ID of the agent that accepted the handoff
+     * @param estimatedArrivalTime When the agent expects to arrive
+     * @returns HandoffConfirmMessage object
+     */
+    public static createHandoffUpdateMessage(
+        updateId: string,
+        handoffId: string,
+        initiatorId: string,
+        receiverId: string,
+        update: HandoffUpdateType,
+        meetingPosition: Position,
+        actionRequired: HandoffActionRequire,
+        estimatedArrivalTime: number
+    ): HandoffUpdateMessage {
+        return {
+            ...this.createBaseMessage(MessageType.HANDOFF_UPDATE, initiatorId, [receiverId]),
+            type: MessageType.HANDOFF_UPDATE,
+            updateId: updateId,
+            handoffId: handoffId,
+            updateType: update,
+            meetingPosition: meetingPosition,
+            actionRequired: actionRequired,
+            estimatedArrivalTime: estimatedArrivalTime,
         };
     }
 }

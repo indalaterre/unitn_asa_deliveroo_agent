@@ -9,6 +9,9 @@ export enum IntentionTypes {
 
     EXPLORE = 3,
     DELIVER = 4,
+
+    PICKUP_HANDOFF = 5,
+    PUT_DOWN_HANDOFF = 6,
 }
 
 export class Intention extends AbstractHashable implements Hashable {
@@ -80,6 +83,22 @@ export class Intention extends AbstractHashable implements Hashable {
      */
     static putDown(position: Position): Intention {
         return new Intention(IntentionTypes.PUT_DOWN, position);
+    }
+
+    /**
+     * Generates a PICK_UP intention for the position
+     * @param position
+     */
+    static pickUpHandoff(position: Position): Intention {
+        return new Intention(IntentionTypes.PICKUP_HANDOFF, position);
+    }
+
+    /**
+     * Generates a PUT_DOWN intention for the position
+     * @param position
+     */
+    static putDownHandoff(position: Position): Intention {
+        return new Intention(IntentionTypes.PUT_DOWN_HANDOFF, position);
     }
 
     /**

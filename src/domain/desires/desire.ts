@@ -6,6 +6,7 @@ import type { Position } from "../models/environment";
  * The priority of a desire
  */
 export enum DesirePriorities {
+    HANDOFF_PRIORITY = 85,
     PRIORITY_PICKUP = 100,
     PRIORITY_DELIVERY = 100,
     DELIVERY = 90,
@@ -22,6 +23,7 @@ export enum DesireTypes {
     PICKUP_HANDOFF = "PICKUP_HANDOFF",
     PUT_DOWN_PARCEL = "PUT_DOWN_PARCEL",
     EXPLORE_ENVIRONMENT = "EXPLORE_ENVIRONMENT",
+    PUT_DOWN_HANDOFF = "PUT_DOWN_HANDOFF",
 }
 
 /**
@@ -74,6 +76,39 @@ export class Desire extends AbstractHashable implements Hashable {
     }
 
     // Handoff is now handled as part of the DELIVER_PARCEL desire
+
+    /**
+     * Creates a desire to put down parcels at a delivery point
+     * @param priority The priority of the desire
+     * @param position The position of the delivery point
+     * @param parcelIds The IDs of the parcels to put down
+     */
+    static putDownParcel(priority: number, position: Position, parcelIds: string[]): Desire {
+        return new Desire(DesireTypes.PUT_DOWN_PARCEL, priority, position, { parcelIds });
+    }
+
+    /**
+     *
+     * @param priority
+     * @param position
+     * @returns
+     */
+    static pickupHandoff(priority: number, requestId: string, partnerId: string, parcelIds: string[], position: Position): Desire {
+        return new Desire(DesireTypes.PICKUP_HANDOFF, priority, position, { requestId, partnerId, parcelIds });
+    }
+
+    /**
+     *
+     * @param priority
+     * @param partnerId
+     * @param parcelIds
+     * @param position
+     * @param benefit
+     * @returns
+     */
+    static putDownHandoff(priority: number, partnerId: string, parcelIds: string[], position: Position, benefit: number): Desire {
+        return new Desire(DesireTypes.PUT_DOWN_HANDOFF, priority, position, { partnerId, parcelIds, benefit });
+    }
 
     /**
      * Checks if this desire is equal to another

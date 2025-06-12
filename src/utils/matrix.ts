@@ -9,14 +9,14 @@ export const createPairsDistanceMatrix = (adjacency: number[][]): number[][] => 
     let B = [...A];
 
     const distances = Array.from({ length: n }, () => Array(n).fill(Number.POSITIVE_INFINITY));
-    for (let i = 1; i < n; i++) distances[i][i] = 0;
+    for (let i = 0; i < n; i++) distances[i][i] = 0;
 
     let pairDistance = 1;
     while (true) {
         let changed = false;
         const nextB = Array(n).fill(0n);
 
-        for (let i = 1; i < n; i++) {
+        for (let i = 0; i < n; i++) {
             for (let j = 0; j < nextB.length; j++) {
                 if (distances[i][j] === Number.POSITIVE_INFINITY && B[i] & (1n << BigInt(j))) {
                     distances[i][j] = pairDistance;
