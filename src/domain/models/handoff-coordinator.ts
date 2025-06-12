@@ -28,7 +28,7 @@ export enum HandoffUpdateType {
 
 export enum HandoffActionRequire {
     MOVE = "move",
-    MOVE_AWAY = "move away",
+    MOVE_AWAY = "move_away",
     PICK_UP = "pick_up",
 }
 
