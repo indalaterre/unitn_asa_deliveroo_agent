@@ -73,6 +73,12 @@ export class BeliefContainer {
     private _carriedParcels: Parcel[] = [];
 
     /**
+     * Parcels that need to be ignored for pick-up intentions
+     * @private
+     */
+    private _parcelIdsToIgnore: Set<string> = new Set<string>();
+
+    /**
      * Stores the temporary disabled delivery points
      * @private
      */
@@ -181,7 +187,6 @@ export class BeliefContainer {
      * @returns TRUE if the agent is carrying at least one parcel
      */
     get isCarrying(): boolean {
-
         this._carriedParcels = this._carriedParcels.filter((parcel) => !parcel.expired);
 
         return !!this._carriedParcels?.length;
@@ -191,7 +196,6 @@ export class BeliefContainer {
      * @returns the id of the parcel being carried
      */
     get carryingParcelIds(): string[] {
-
         this._carriedParcels = this._carriedParcels.filter((parcel) => !parcel.expired);
 
         return this._carriedParcels.map((parcel: Parcel) => parcel.id);
@@ -228,7 +232,9 @@ export class BeliefContainer {
     }
 
     get freeParcels(): Parcel[] {
-        return Array.from(this.freeParcelsById.values());
+        return Array.from(this.freeParcelsById.values()).filter(
+            (parcel: Parcel) => !this._parcelIdsToIgnore.has(parcel.id),
+        );
     }
 
     get visibleFreeParcels(): Parcel[] {
@@ -246,7 +252,7 @@ export class BeliefContainer {
     get bestParcelToDeliver(): PositionWithDistance {
         const moveScoreCost: number = GameConfiguration.moveScoreCost;
 
-        const candidates: PositionWithDistance[] = Array.from(this.freeParcelsById.values())
+        const candidates: PositionWithDistance[] = this.freeParcels
             .filter(
                 (parcel: Parcel) =>
                     this.parcelsDistancesToCloserDelivery.has(parcel.id) &&
@@ -323,6 +329,7 @@ export class BeliefContainer {
         );
 
         this._notWorthParcels.clear();
+        parcelIds.forEach((parcelId: string) => this._parcelIdsToIgnore.add(parcelId));
     }
 
     findBestDelivery(requestPosition: Position = this._ownPosition): PositionWithDistance {
@@ -347,17 +354,19 @@ export class BeliefContainer {
                     const isBlocked = blockedDeliveries?.has(tilePosition);
 
                     // Calculate path and distance
-                    const path: Position[] = this.map.calculatePath(
+                    const path: Position[] = this.map.calculatePath(requestPosition, tilePosition, [
+                        ...blockedDeliveries.all,
+                        ...this.getOccupiedPositions(),
+                    ]);
+
+                    const distance: number = this.map.distanceIfPossible(
                         requestPosition,
                         tilePosition,
-                        blockedDeliveries?.all.concat(this.getOccupiedPositions()),
                     );
-                    const distance = this.map.distanceIfPossible(requestPosition, tilePosition);
 
                     // Determine if this point is reachable
                     const isReachable =
-                        path !== null &&
-                        path.length > 0 &&
+                        path?.length > 0 &&
                         distance !== null &&
                         distance !== Number.POSITIVE_INFINITY;
 
@@ -499,7 +508,10 @@ export class BeliefContainer {
      */
     async generatePickupParcelsWithPDDL(): Promise<HashMap<Position, PositionWithDistance[]>> {
         // Skip if no parcels are available
-        const visibleParcels: Parcel[] = this.visibleFreeParcels;
+        const visibleParcels: Parcel[] = this.visibleFreeParcels.filter(
+            (parcel: Parcel) =>
+                !!this.calculateMovingPath(parcel.position, this.getOccupiedPositions()),
+        );
         if (!visibleParcels?.length) {
             return new HashMap<Position, PositionWithDistance[]>();
         }
@@ -514,7 +526,6 @@ export class BeliefContainer {
             ]),
         ).map((position: string) => ({ position, isDelivery: false }) as PddlLocation);
 
-        const test = this.getRankedDeliveryLocations();
         const deliveryLocations: PddlLocation[] = this.getRankedDeliveryLocations().map(
             (position: PositionWithDistance) => {
                 return {
@@ -579,7 +590,7 @@ export class BeliefContainer {
                         parameters: step.parameters,
                     };
 
-                    // Create group with current pickups and this delivery
+                    // Create the group with current pickups and this delivery
                     pickupDeliveryGroups.push({
                         deliveryAction,
                         pickups: [...currentPickups], // Copy current pickups
@@ -734,20 +745,6 @@ export class BeliefContainer {
         this.visitedTiles.update(position, (count: number) => (count ?? 0) + 1);
     }
 
-    giveUpWithIntention(intention: Intention): void {
-        const type: IntentionTypes = intention.type;
-        if (type === IntentionTypes.MOVE) {
-            const parcels: HashSet<Parcel> = this.parcelsByPosition.get(intention.position);
-            this._notWorthParcels.addAll(parcels.all);
-        } else if (type === IntentionTypes.DELIVER) {
-            this._temporaryBlockedDeliveries.set(intention.position, new DecayingValue(10));
-            // Unregister from the delivery point if giving up on a deliver intention
-            this.unregisterFromDeliveryPoint(intention.position);
-        } else if (type === IntentionTypes.EXPLORE) {
-            this._temporaryBlockedExplore.set(intention.position, new DecayingValue(10));
-        }
-    }
-
     /**
      * Unregisters the agent from a delivery point to reduce congestion tracking
      * @param position The delivery point position
@@ -776,45 +773,6 @@ export class BeliefContainer {
         return this.agentsByPosition.keySet().all;
     }
 
-    /**
-     * Checks if the agent is currently on a delivery tile
-     * @returns True if the agent is on a delivery tile
-     */
-    isAgentOnDeliveryTile(): boolean {
-        return this.map.isDeliveryPosition(this._ownPosition);
-    }
-
-    /**
-     * Checks if the agent is currently on a tile with a free parcel
-     * @returns True if the agent is on a tile with a free parcel
-     */
-    isAgentOnFreeParcel(): boolean {
-        const parcelsInPosition: HashSet<Parcel> = this.parcelsByPosition.get(this._ownPosition);
-        if (!parcelsInPosition?.count) {
-            return false;
-        }
-
-        const carriedParcelIds = new Set<string>(this.carryingParcelIds);
-
-        for (const parcel of parcelsInPosition.all) {
-            if (!carriedParcelIds.has(parcel.id)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Calculates a congestion score for a delivery point
-     * @param position The delivery point position
-     * @param distance The distance to the delivery point
-     * @returns A weighted score (lower is better)
-     */
-    calculateDeliveryPointCongestionScore(position: Position, distance: number): number {
-        return this._deliveryPointManager.calculateCongestionScore(position, distance);
-    }
-
     queueParcelsSynchronization(parcels: Parcel[]): void {
         this._parcelsToBeSynchronized.addAll(parcels);
     }
@@ -828,7 +786,7 @@ export class BeliefContainer {
             reachableParcels.map((parcel: Parcel) => parcel.id),
         );
 
-        if (reachableParcels.length == 0){
+        if (reachableParcels.length == 0) {
             return;
         }
 
@@ -969,9 +927,9 @@ export class BeliefContainer {
     }
 
     /**
-     * 
-     * @param pickedParcelIds 
-     * @returns 
+     *
+     * @param pickedParcelIds
+     * @returns
      */
     updateCarriedParcelsAfterPickup(pickedParcelIds: Set<string>) {
         for (const parcelId of pickedParcelIds) {
@@ -1052,8 +1010,7 @@ export class BeliefContainer {
                                              PARTNER
 
          */
-        const timeSavings: number =
-            myDistanceToMeeting; //+ friendDistanceToMeeting;
+        const timeSavings: number = myDistanceToMeeting; //+ friendDistanceToMeeting;
 
         const totalParcelValue: number = this._carriedParcels.reduce(
             (sum: number, parcel: Parcel) => sum + parcel.currentScore,
@@ -1063,7 +1020,7 @@ export class BeliefContainer {
         // We increase the priority of the handoff if parcels are closer to expiration (their score is low)
         //return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
 
-        return timeSavings;
+        return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
     }
 
     //////// AGENT
@@ -1223,9 +1180,7 @@ export class BeliefContainer {
     }
 
     partnerAdjacentTile(partnerId: string): Position | null {
-
         if (this.isTrustedAgent(partnerId)) {
-
             const partner = this.agents.get(partnerId);
             const partnerPosition = this.positionByAgent.get(partner);
 
@@ -1233,12 +1188,10 @@ export class BeliefContainer {
 
             let partnerFound = false;
             for (const adjacentTile of adjacentTiles) {
-
                 if (adjacentTile.equals(partnerPosition)) {
                     partnerFound = true;
                     break;
                 }
-
             }
 
             if (partnerFound) {
@@ -1247,6 +1200,10 @@ export class BeliefContainer {
         }
 
         return null;
+    }
+
+    isParcelOnPosition(position: Position): boolean {
+        return this.parcelsByPosition.has(position);
     }
 
     private calculateTileExplorationFactor(position: Position) {

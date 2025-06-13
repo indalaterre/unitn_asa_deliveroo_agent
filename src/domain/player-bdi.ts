@@ -71,14 +71,15 @@ export class PlayerBDI {
         // Initialize belief system
         this._beliefs = new BeliefContainer(playerInfo, matchMap);
 
+        // Initialize desires manager
+        this._desiresManager = new DesiresManager(this._beliefs);
+
         // Initialize handoff coordinator
         this._handoffCoordinator = new HandoffCoordinator(
             this.messenger,
-            this._beliefs
+            this._beliefs,
+            this._desiresManager,
         );
-
-        // Initialize desires manager
-        this._desiresManager = new DesiresManager(this._beliefs, this._handoffCoordinator);
 
         // Initialize intention manager
         this._intentionManager = new IntentionManager(
@@ -147,7 +148,9 @@ export class PlayerBDI {
             this._beliefs.queueParcelsSynchronization(parcels);
         });
 
-        sensor.onPlayerPositionUpdate(async (position: Position) => this.updatePlayerPosition(position));
+        sensor.onPlayerPositionUpdate(async (position: Position) =>
+            this.updatePlayerPosition(position),
+        );
 
         setInterval(async () => {
             if (this._beliefs.trustedAgents?.length) {
@@ -168,7 +171,7 @@ export class PlayerBDI {
                     ),
                 );
             }
-        }, 4000);
+        }, 6000);
     }
 
     /**
@@ -240,14 +243,10 @@ export class PlayerBDI {
             await new Promise((resolve) => setImmediate(resolve));
 
             // Synchronize beliefs
-            try {
-                this._beliefs.synchronizeKnownAgents();
-                this._beliefs.synchronizeKnownParcels();
-            } catch (error) {
-                console.log(`Synchronize beliefs: ${error}`)
-            }
+            this._beliefs.synchronizeKnownAgents();
+            this._beliefs.synchronizeKnownParcels();
 
-            this._desiresManager.generateExplorationDesires();
+            await this._desiresManager.generateDesiresIfWaiting();
 
             // Process intentions
             await this._intentionManager.processIntentions().catch((error) => {

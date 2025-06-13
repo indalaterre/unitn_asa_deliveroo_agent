@@ -19,6 +19,7 @@ function getConfiguration(): AgentConfiguration {
         { name: "host", type: String },
         { name: "token", type: String },
         { name: "use-pddl", type: String },
+        { name: "agent-name", type: String },
         { name: "public-key", type: String },
         { name: "private-key", type: String },
         { name: "planner-host", type: String },
@@ -29,8 +30,8 @@ function getConfiguration(): AgentConfiguration {
     ];
 
     const defaultValues = new Map<string, string | number | boolean>();
-    defaultValues.set("agent-name", "");
     defaultValues.set("use-pddl", false);
+    defaultValues.set("agent-name", "main");
     defaultValues.set("hello-interval", 2000);
     defaultValues.set("max-last-heard", 6000);
     defaultValues.set("max-carrying-parcels", 6);
@@ -48,16 +49,16 @@ function getConfiguration(): AgentConfiguration {
 
     dotenv.config({ path: ".env" });
 
-    const agentName = cliArgs["agent-name"] ?? "main"; // get 'second', 'third', etc.
+    const agentName: string = (config.get("agent-name") as string) ?? "main";
     // --- Construct env file path ---
-    const envPath = path.resolve(__dirname, "..", `.player.env.${agentName}`);
+    const envPath: string = path.resolve(__dirname, "..", `.player.env.${agentName}`);
 
     // --- Load env file ---
     dotenv.config({ path: envPath });
 
     for (const option of options) {
-        const varName = option.name.toUpperCase().replace(/-/g, "_");
-        const envValue = process.env[varName];
+        const varName: string = option.name.toUpperCase().replace(/-/g, "_");
+        const envValue: string = process.env[varName];
 
         if (envValue !== undefined) {
             config.set(option.name, option.type(envValue));

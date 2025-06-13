@@ -1,11 +1,15 @@
 import type { Agent, Parcel } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import type { HandoffActionRequire, HandoffStatus, HandoffUpdateType } from "@domain/models/handoff-coordinator";
+import type {
+    HandoffActionRequire,
+    HandoffStatus,
+    HandoffUpdateType,
+} from "@domain/models/handoff-coordinator";
 import {
     type AgentPositionUpdate,
     type ExplorationSectorAssignment,
-    type HandoffResponseMessage,
     type HandoffRequestMessage,
+    type HandoffResponseMessage,
     type HandoffUpdateMessage,
     type HelloMessage,
     type Message,
@@ -144,8 +148,6 @@ export class MessageFactory {
      * @param parcelIds IDs of parcels to hand off
      * @param meetingPosition Proposed meeting location
      * @param urgency Priority of this handoff (1-10)
-     * @param timeToMeet When to meet (timestamp)
-     * @param expiresAt When this request expires
      * @returns HandoffRequestMessage object with a generated requestId
      */
     public static createHandoffRequestMessage(
@@ -155,11 +157,6 @@ export class MessageFactory {
         parcelIds: string[],
         meetingPosition: Position,
         urgency: number,
-        timeToMeet: number,
-        expiresAt: number,
-        status: HandoffStatus,
-        actionRequired: HandoffActionRequire,
-        estimatedArrivalTime?: number,
     ): HandoffRequestMessage {
         return {
             ...this.createBaseMessage(MessageType.HANDOFF_REQUEST, initiatorId, [receiverId]),
@@ -168,11 +165,6 @@ export class MessageFactory {
             parcelIds: parcelIds,
             meetingPosition: meetingPosition,
             urgency: urgency,
-            timeToMeet: timeToMeet,
-            expiresAt: expiresAt,
-            status: status,
-            actionRequired: actionRequired,
-            estimatedArrivalTime: estimatedArrivalTime,
         };
     }
 
@@ -190,7 +182,7 @@ export class MessageFactory {
         recipientIds: string[],
         status: HandoffStatus,
         meetingPosition: Position,
-        estimatedArrivalTime: number
+        estimatedArrivalTime: number,
     ): HandoffResponseMessage {
         return {
             ...this.createBaseMessage(MessageType.HANDOFF_RESPONSE, initiatorId, recipientIds),
@@ -218,7 +210,7 @@ export class MessageFactory {
         update: HandoffUpdateType,
         meetingPosition: Position,
         actionRequired: HandoffActionRequire,
-        estimatedArrivalTime: number
+        estimatedArrivalTime: number,
     ): HandoffUpdateMessage {
         return {
             ...this.createBaseMessage(MessageType.HANDOFF_UPDATE, initiatorId, [receiverId]),

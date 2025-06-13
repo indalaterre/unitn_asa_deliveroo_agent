@@ -1,6 +1,2 @@
 HOST='http://localhost:4008'
-PRIVATE_KEY='src/assets/keys/private'
-PUBLIC_KEY='src/assets/keys/public.pub'
 TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjBlM2Q5OCIsIm5hbWUiOiJBbWljbzMiLCJ0ZWFtSWQiOiJiZDBlZDMiLCJ0ZWFtTmFtZSI6Im1hcmNvIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NDczMDc1Nzh9.NrdnZpoloJHjVZQKZDy60TJMSzQ9Utjm6zO08FNQivM'
-PDDL_HOST='http://localhost:5001'
-PDDL_PAAS_PATH='/package/dual-bfws-ffparser/solve'

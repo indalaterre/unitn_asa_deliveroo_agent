@@ -16,10 +16,9 @@
   "scripts": {
     "build:bdi": "tsx esbuild.bdi.config.ts",
     "start:dev": "npm run build && npm run start",
-    "start:bdi": "npm run build:bdi && node dist/main-bdi.js --agent-name",
     "start:main": "npm run build:bdi && node dist/main-bdi.js",
-    "start:second": "npm run build:bdi && node dist/main-bdi.js --agent-name second",
-    "start:third": "npm run build:bdi && node dist/main-bdi.js --agent-name third",
+    "start:second": "npm run build:bdi && node dist/main-bdi.js --agent-name=second",
+    "start:third": "npm run build:bdi && node dist/main-bdi.js --agent-name=third",
     "pre-commit": "bione ci src/",
     "lint": "biome check src/",
     "lint-fix": "biome check --write src/"

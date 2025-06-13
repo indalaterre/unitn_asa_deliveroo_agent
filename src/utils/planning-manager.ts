@@ -26,7 +26,6 @@ export interface WorldState {
 }
 
 export class PlanningManager {
-
     /**
      * The number of executions. Used to calculate the AVG planning time
      * @private

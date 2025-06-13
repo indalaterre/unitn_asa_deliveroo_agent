@@ -1,6 +1,13 @@
 import type { Agent, Parcel } from "@domain/models";
 import type { Position } from "@domain/models/environment";
-import type { HandoffRequest, HandoffStatus, HandoffResponse, HandoffUpdate, HandoffUpdateType, HandoffActionRequire } from "@domain/models/handoff-coordinator";
+import type {
+    HandoffActionRequire,
+    HandoffRequest,
+    HandoffResponse,
+    HandoffStatus,
+    HandoffUpdate,
+    HandoffUpdateType,
+} from "@domain/models/handoff-coordinator";
 
 /**
  * Message types for agent communication
@@ -75,11 +82,6 @@ export interface HandoffRequestMessage extends Message {
     parcelIds: string[]; // IDs of parcels to hand off
     meetingPosition: Position; // Proposed meeting location
     urgency: number; // Priority of this handoff (1-10)
-    timeToMeet: number; // Timestamp for when to meet
-    expiresAt: number; // When this request expires
-    status: HandoffStatus;
-    actionRequired: HandoffActionRequire;
-    estimatedArrivalTime?: number;
 }
 
 /**
@@ -98,7 +100,7 @@ export interface HandoffResponseMessage extends Message {
  */
 export interface HandoffUpdateMessage extends Message {
     type: MessageType.HANDOFF_UPDATE;
-    updateId: string,
+    updateId: string;
     handoffId: string;
     updateType: HandoffUpdateType;
     meetingPosition: Position;
@@ -180,26 +182,26 @@ export interface Messenger {
     onHandoffRequestReceived(callback: (request: HandoffRequest) => void): void;
 
     /**
-     * 
-     * @param handoffMessage 
+     *
+     * @param handoffMessage
      */
     sendHandoffResponseMessage(handoffMessage: HandoffResponse): Promise<void[]>;
 
     /**
-     * 
-     * @param callback 
+     *
+     * @param callback
      */
     onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void;
 
     /**
-     * 
-     * @param handoffMessage 
+     *
+     * @param handoffMessage
      */
     sendHandoffUpdateMessage(handoffMessage: HandoffUpdate): Promise<void[]>;
 
     /**
-     * 
-     * @param callback 
+     *
+     * @param callback
      */
     onHandoffUpdateReceived(callback: (update: HandoffUpdate) => void): void;
 }

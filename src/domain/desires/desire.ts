@@ -88,13 +88,15 @@ export class Desire extends AbstractHashable implements Hashable {
     }
 
     /**
-     *
      * @param priority
-     * @param position
+     * @param parcelIds         the parcels the other agent will bring
+     * @param meetingPosition   the meeting position
      * @returns
      */
-    static pickupHandoff(priority: number, requestId: string, partnerId: string, parcelIds: string[], position: Position): Desire {
-        return new Desire(DesireTypes.PICKUP_HANDOFF, priority, position, { requestId, partnerId, parcelIds });
+    static pickupHandoff(priority: number, parcelIds: string[], meetingPosition: Position): Desire {
+        return new Desire(DesireTypes.PICKUP_HANDOFF, priority, meetingPosition, {
+            parcelIds,
+        });
     }
 
     /**
@@ -106,8 +108,18 @@ export class Desire extends AbstractHashable implements Hashable {
      * @param benefit
      * @returns
      */
-    static putDownHandoff(priority: number, partnerId: string, parcelIds: string[], position: Position, benefit: number): Desire {
-        return new Desire(DesireTypes.PUT_DOWN_HANDOFF, priority, position, { partnerId, parcelIds, benefit });
+    static putDownHandoff(
+        priority: number,
+        partnerId: string,
+        parcelIds: string[],
+        position: Position,
+        benefit: number,
+    ): Desire {
+        return new Desire(DesireTypes.PUT_DOWN_HANDOFF, priority, position, {
+            partnerId,
+            parcelIds,
+            benefit,
+        });
     }
 
     /**

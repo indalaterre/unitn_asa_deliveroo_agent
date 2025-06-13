@@ -1,13 +1,12 @@
-import type {PositionWithDistance} from "@domain/map";
-import {type Agent, GameConfiguration, type Parcel} from "@domain/models";
-import {PriorityQueue} from "@domain/models/priority-queue";
-import type {HashMap} from "@utils/hashmap";
-import {HashSet} from "@utils/hashset";
-import {InternalEventManager} from "@utils/internal-event-manager";
-import type {BeliefContainer} from "../beliefs";
-import type {Position} from "../models/environment";
-import {Desire, DesirePriorities, DesireTypes} from "./desire";
-import {HandoffCoordinator} from "@domain/models/handoff-coordinator";
+import type { BeliefContainer } from "@domain/beliefs";
+import { Desire, DesirePriorities, DesireTypes } from "@domain/desires/desire";
+import type { PositionWithDistance } from "@domain/map";
+import { GameConfiguration, type Parcel } from "@domain/models";
+import type { Position } from "@domain/models/environment";
+import { PriorityQueue } from "@domain/models/priority-queue";
+import type { HashMap } from "@utils/hashmap";
+import { HashSet } from "@utils/hashset";
+import { InternalEventManager } from "@utils/internal-event-manager";
 
 /**
  * Manages the agent's desires
@@ -28,12 +27,17 @@ export class DesiresManager {
 
     /**
      * Creates a new desires manager
-     * @param beliefs The agent's beliefs
+     * @param beliefs            The agent's beliefs
      */
-    constructor(
-        private readonly beliefs: BeliefContainer,
-        private readonly handoffCordinator: HandoffCoordinator
-    ) {}
+    constructor(private readonly beliefs: BeliefContainer) {}
+
+    /**
+     * Generates new desires only in case there are no actions to be taken
+     */
+    async generateDesiresIfWaiting(): Promise<void> {
+        if (this._activeDesires.size > 0) return;
+        return this.generateDesires();
+    }
 
     /**
      * Generates desires based on the current beliefs
@@ -54,7 +58,31 @@ export class DesiresManager {
             this.generatePickupDesires();
         }
 
-        InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
+        this.generateExplorationDesires();
+
+        this._activeDesires.size
+            && InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
+    }
+
+    private generateDeliveryDesireToPosition(deliveryPosition: Position): void {
+        // Only generate delivery desires if carrying parcels
+        if (!deliveryPosition) {
+            return;
+        }
+
+        const desirePriority: DesirePriorities =
+            this.beliefs.carryingParcelIds?.length &&
+            deliveryPosition.equals(this.beliefs.myPosition)
+                ? DesirePriorities.PRIORITY_DELIVERY // This has a highest priority
+                : DesirePriorities.DELIVERY;
+
+        const putDownDesire: Desire = Desire.deliverParcel(
+            desirePriority,
+            deliveryPosition,
+            this.beliefs.carryingParcelIds,
+        );
+
+        this._activeDesires.add(putDownDesire, putDownDesire.priority);
     }
 
     /**
@@ -62,122 +90,13 @@ export class DesiresManager {
      * @private
      */
     private generateDeliveryDesires(): void {
-        // Only generate delivery desires if carrying parcels
-        if (!this.beliefs.isCarrying) {
-            return;
-        }
-
         // Find the best delivery point
         const deliveryPoint: PositionWithDistance = this.beliefs.findBestDelivery();
         if (!deliveryPoint?.position) {
             return;
         }
 
-        // If already at delivery point, generate PUT_DOWN desire
-        if (
-            this.beliefs.carryingParcelIds?.length &&
-            deliveryPoint.position.equals(this.beliefs.myPosition)
-        ) {
-            const putDownDesire = Desire.deliverParcel(
-                DesirePriorities.PRIORITY_DELIVERY, // High priority
-                deliveryPoint.position,
-                this.beliefs.carryingParcelIds,
-            );
-
-            this._activeDesires.add(putDownDesire, putDownDesire.priority);
-        } else {
-
-            let handoffDesire = null;
-            if (this.handoffCordinator.hasActiveHandoff()) {
-
-                const activeHandoff = this.handoffCordinator.getActiveHandoff();
-
-                // Calculate benefit of handoff
-                const handoffBenefit = this.beliefs.evaluateHandoffBenefit((activeHandoff.initiatorId == this.beliefs.myId)? activeHandoff.receiverId : activeHandoff.initiatorId);
-
-                handoffDesire = this.generatePutDownHandoffDesire(activeHandoff.receiverId, this.beliefs.carryingParcelIds, activeHandoff.meetingPosition, handoffBenefit);
-
-            } else {
-
-                // Check if a handoff would be beneficial
-                const potentialHandoffPartner = this.evaluatePotentialHandoffPartners();
-
-                if (potentialHandoffPartner) {
-                    // Create a PutDownHandoff desire with handoff context
-                    const { agentId, meetingPosition, benefit } = potentialHandoffPartner;
-                    handoffDesire = this.generatePutDownHandoffDesire(agentId, this.beliefs.carryingParcelIds, meetingPosition, benefit);
-                }
-            }
-
-            // Standard delivery desire without handoff
-            //const totalParcelValue: number = this.beliefs.carriedParcels.reduce(
-            //    (sum: number, parcel: Parcel) => sum + parcel.currentScore,
-            //    0,
-            //);
-            //const standardDeliveryBenefit = Math.min(deliveryPoint.distance - Math.floor(totalParcelValue / 10), 1);
-
-            const standardDeliveryBenefit = deliveryPoint.distance;
-
-            const deliverDesire: Desire = Desire.deliverParcel(
-                DesirePriorities.DELIVERY, // Medium-high priority
-                deliveryPoint.position,
-                this.beliefs.carryingParcelIds,
-            );
-
-            if (!!handoffDesire && (handoffDesire.context.benefit < standardDeliveryBenefit || (handoffDesire.context.benefit == 1 && standardDeliveryBenefit == 1))) {
-                this._activeDesires.add(handoffDesire, handoffDesire.priority);
-            } else {
-                this._activeDesires.add(deliverDesire, deliverDesire.priority);
-            }
-        }
-    }
-
-    /**
-     * Evaluates potential handoff partners and returns the best one if beneficial
-     * @returns The best handoff partner information or null if no beneficial handoff
-     * @private
-     */
-    private evaluatePotentialHandoffPartners(): {
-        agentId: string;
-        meetingPosition: Position;
-        benefit: number;
-    } | null {
-        // Find potential handoff partners
-        const agents: Agent[] = this.beliefs.trustedAgents;
-        let bestPartner = null;
-        let maxBenefit = 0;
-
-        // Evaluate each agent as a potential handoff partner
-        for (const agent of agents) {
-            // Skip if agent is not trusted
-            if (!this.beliefs.isTrustedAgent(agent.agentId)) {
-                continue;
-            }
-            // Calculate benefit of handoff
-            const handoffBenefit = this.beliefs.evaluateHandoffBenefit(agent.agentId);
-
-            // Only consider handoff if beneficial and better than current best
-            if (handoffBenefit > 0 && handoffBenefit > maxBenefit) {
-                // Calculate meeting position (midpoint between agents)
-                const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
-                    agent.position,
-                );
-
-                if (handoffPaths?.length >= 2 && handoffPaths[1].length > 0) {
-                    const meetingPosition: Position = handoffPaths[1][0];
-
-                    bestPartner = {
-                        agentId: agent.agentId,
-                        meetingPosition: meetingPosition,
-                        benefit: handoffBenefit,
-                    };
-
-                    maxBenefit = handoffBenefit;
-                }
-            }
-        }
-
-        return bestPartner;
+        return this.generateDeliveryDesireToPosition(deliveryPoint.position);
     }
 
     /**
@@ -185,21 +104,6 @@ export class DesiresManager {
      * @private
      */
     private generatePickupDesires(): void {
-
-        if (this.handoffCordinator.hasActiveHandoff()) {
-
-            const activeHandoff = this.handoffCordinator.getActiveHandoff();
-            if (activeHandoff.receiverId === this.beliefs.myId) {
-                this.generatePickupHandoffDesire(
-                    activeHandoff.requestId,
-                    activeHandoff.initiatorId,
-                    activeHandoff.parcelIds,
-                    activeHandoff.meetingPosition,
-                    activeHandoff.timeToMeet,
-                );
-            }
-        }
-
         // Find the best parcel to pick up
         if (this.beliefs.isCarrying) {
             //We need to evaluate additional opportunistic pickups
@@ -313,14 +217,7 @@ export class DesiresManager {
             }
 
             if (!parcelIds?.length) continue;
-
-            const moveDesire: Desire = Desire.deliverParcel(
-                DesirePriorities.DELIVERY,
-                delivery,
-                parcelIds,
-            );
-
-            this._activeDesires.add(moveDesire, moveDesire.priority);
+            this.generateDeliveryDesireToPosition(delivery);
         }
     }
 
@@ -391,27 +288,15 @@ export class DesiresManager {
         InternalEventManager.emit("desire:failed", desire);
     }
 
-    generatePickupHandoffDesire(requestId: string, partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number=0): void {
-        // Create pickup handoff desire with the highest priority
+    generatePickupHandoffDesire(parcelIds: string[], meetingPosition: Position, benefit = 0): void {
         const pickUpHandoffDesire: Desire = Desire.pickupHandoff(
-            DesirePriorities.HANDOFF_PRIORITY,
-            requestId,
-            partnerId,
+            // benefit will influence the priority
+            DesirePriorities.HANDOFF_PRIORITY - benefit,
             parcelIds,
-            meetingPosition
+            meetingPosition,
         );
 
         this._activeDesires.add(pickUpHandoffDesire, pickUpHandoffDesire.priority);
-    }
-
-    generatePutDownHandoffDesire(partnerId: string, parcelIds: string[], meetingPosition: Position, benefit: number): Desire {
-        // Create pickup handoff desire with the highest priority
-        return Desire.putDownHandoff(
-            DesirePriorities.HANDOFF_PRIORITY,
-            partnerId,
-            parcelIds,
-            meetingPosition,
-            benefit,
-        );
+        InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
     }
 }
