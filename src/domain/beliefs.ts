@@ -5,7 +5,6 @@ import type { DecayingValue } from "@domain/models/decaying-value";
 import { DeliveryPointManager } from "@domain/models/delivery-point-manager";
 import type { Tile } from "@domain/models/environment";
 import { Position } from "@domain/models/environment";
-import { type Intention, IntentionTypes } from "@domain/models/intention";
 import type { PlayerInfo } from "@domain/player-info";
 import type { ClusteredTiles } from "@utils/clustering-worker";
 import { extractFirstElementsInSortedArray } from "@utils/functions";
@@ -971,7 +970,7 @@ export class BeliefContainer {
         const distanceToDelivery = this.map.calculatePath(this.myPosition, bestDelivery.position);
         const agentDistanceToDelivery = this.map.calculatePath(agentPosition, bestAgentDelivery.position);
 
-        if (distanceToDelivery?.length < agentDistanceToDelivery?.length) {
+        if (distanceToDelivery?.length <= agentDistanceToDelivery?.length) {
             return -1;
         }
 
