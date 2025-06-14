@@ -426,7 +426,7 @@ export class IntentionManager {
      * @returns Promise that resolves to true if the move was successful, false otherwise
      */
     private async moveTowards(intention: Intention): Promise<boolean> {
-        let nextPosition: Position = intention.context?.path?.shift();
+        let nextPosition: Position = intention.context?.path?.[0];
         if (!nextPosition || this.beliefs.myPosition.equals(intention.position)) {
             return true;
         }
@@ -453,7 +453,7 @@ export class IntentionManager {
                 return false;
             }
 
-            nextPosition = path.shift();
+            nextPosition = path[0];
             intention.context = {
                 ...intention.context,
                 path,
@@ -464,6 +464,7 @@ export class IntentionManager {
         const successfulMove: boolean = await this.actuator.move(nextDirection);
 
         if (successfulMove) {
+            intention.context?.path?.shift();
             this.beliefs.synchronizeMyPosition(nextPosition);
         }
 
