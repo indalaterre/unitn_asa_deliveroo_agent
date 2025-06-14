@@ -511,43 +511,7 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                     const message: T = this._cipher.decryptObject(encryptedMessage);
                     callback(message);
                 }
-            } catch (ex) {
-                const a = 1;
-            }
-        });
-    }
-
-    waitForMessageFromAgent<T extends Message>(
-        senderId: string,
-        expectedType: MessageType,
-        timeoutMs = 5000,
-    ): Promise<T> {
-        return new Promise((resolve, reject) => {
-            const handler = (message: T) => {
-                if (message.type === expectedType && message.senderId === senderId) {
-                    clearTimeout(timeout);
-                    this._socket.off("msg", internalHandler); // rimuove il listener
-                    resolve(message);
-                }
-            };
-
-            const internalHandler = (id: string, _name: string, encryptedMessage: string) => {
-                if (id === this._myAgentId) return;
-
-                try {
-                    const message: T = this._cipher.decryptObject(encryptedMessage);
-                    handler(message);
-                } catch (e) {
-                    // Ignora messaggi non decifrabili
-                }
-            };
-
-            this._socket.on("msg", internalHandler);
-
-            const timeout = setTimeout(() => {
-                this._socket.off("msg", internalHandler);
-                reject(new Error(`Timeout waiting for ${expectedType} from agent ${senderId}`));
-            }, timeoutMs);
+            } catch (ex) {}
         });
     }
 }

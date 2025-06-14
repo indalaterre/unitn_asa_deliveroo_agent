@@ -60,13 +60,16 @@ export class DesiresManager {
 
         this.generateExplorationDesires();
 
-        this._activeDesires.size
-            && InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
+        this._activeDesires.size &&
+            InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
     }
 
-    private generateDeliveryDesireToPosition(deliveryPosition: Position): void {
+    private generateDeliveryDesireToPosition(
+        deliveryPosition: Position,
+        plannedInAdvance = false,
+    ): void {
         // Only generate delivery desires if carrying parcels
-        if (!deliveryPosition) {
+        if (!deliveryPosition || (!plannedInAdvance && !this.beliefs.carryingParcelIds?.length)) {
             return;
         }
 
@@ -142,10 +145,7 @@ export class DesiresManager {
             const detourDesire: Desire = Desire.pickupParcel(
                 // Priority based on net benefit, but adjusted to be competitive
                 // Higher net benefit = higher priority
-                Math.min(
-                    DesirePriorities.PICKUP + Math.floor(netBenefit / 10),
-                    DesirePriorities.PRIORITY_PICKUP - 5,
-                ),
+                DesirePriorities.DELIVERY + Math.floor(netBenefit / 10),
                 additionalParcel.position,
                 additionalParcel.context.parcel.id,
             );
@@ -217,7 +217,7 @@ export class DesiresManager {
             }
 
             if (!parcelIds?.length) continue;
-            this.generateDeliveryDesireToPosition(delivery);
+            this.generateDeliveryDesireToPosition(delivery, true);
         }
     }
 

@@ -58,13 +58,9 @@ export class Intention extends AbstractHashable implements Hashable {
     /**
      * Generates a MOVE intention to pick up the parcel of the friend agent
      * @param position  the meeting position with the friend agent
-     * @param waitingCondition The condition to let the agent wait for the one which requested the end off
      */
-    static moveHandOff(position: Position, waitingCondition: (data: any) => boolean): Intention {
-        return new Intention(IntentionTypes.MOVE, position, [
-            //Intention.wait(waitingCondition),
-            Intention.pickUp(position),
-        ]);
+    static moveHandOff(position: Position): Intention {
+        return new Intention(IntentionTypes.MOVE, position, [Intention.pickUp(position)]);
     }
 
     /**
@@ -180,7 +176,7 @@ export class Intention extends AbstractHashable implements Hashable {
     set context(value: any) {
         this._context = {
             ...this._context,
-            ...value
+            ...value,
         };
 
         this.subIntentions.forEach((intention: Intention) => (intention.context = value));
@@ -192,6 +188,22 @@ export class Intention extends AbstractHashable implements Hashable {
      */
     hasContext(): boolean {
         return !!this._context;
+    }
+
+    /**
+     * Updates the position on which the intention will be executed
+     * @param position  the new position
+     * @param subTypes  the list of types to which the update must be propagated
+     */
+    updatePosition(position: Position, subTypes: IntentionTypes[] = []): void {
+        if (!position) return;
+
+        this.position = position;
+        for (const subIntention of this.subIntentions) {
+            if (!subTypes.includes(subIntention.type)) continue;
+
+            subIntention.updatePosition(position, subTypes);
+        }
     }
 
     /**
@@ -220,6 +232,9 @@ export class Intention extends AbstractHashable implements Hashable {
         return this.type === IntentionTypes.DELIVER;
     }
 
+    /**
+     * TRUE if it's an EXPLORE intention
+     */
     get isExplore(): boolean {
         return this.type === IntentionTypes.EXPLORE;
     }

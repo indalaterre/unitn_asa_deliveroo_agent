@@ -1,7 +1,7 @@
 import type { MatchMap, PositionWithDistance } from "@domain/map";
 import { type Agent, Instant, ObservedAgent, Parcel } from "@domain/models";
 import { GameConfiguration } from "@domain/models/configurations";
-import { DecayingValue } from "@domain/models/decaying-value";
+import type { DecayingValue } from "@domain/models/decaying-value";
 import { DeliveryPointManager } from "@domain/models/delivery-point-manager";
 import type { Tile } from "@domain/models/environment";
 import { Position } from "@domain/models/environment";
@@ -13,6 +13,7 @@ import { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
 import { MultiValueHashMap } from "@utils/multivaluehashmap";
 
+import type { StatisticsLogger } from "@domain/models/statistics-logger";
 import { InternalEventManager } from "@utils/internal-event-manager";
 import { type PddlLocation, PlanningManager, type WorldState } from "@utils/planning-manager";
 
@@ -65,7 +66,7 @@ export class BeliefContainer {
      * The planner manager to manage plannings via PDDL
      * @private
      */
-    private readonly plannerManager: PlanningManager = new PlanningManager();
+    private readonly plannerManager: PlanningManager;
 
     /**
      * @private The ID of the carried parcels (if any)
@@ -168,6 +169,7 @@ export class BeliefContainer {
 
     constructor(
         public readonly playerInfo: PlayerInfo,
+        private readonly statsLogger: StatisticsLogger,
         public readonly map: MatchMap,
     ) {
         this._ownPosition = playerInfo.position;
@@ -181,6 +183,8 @@ export class BeliefContainer {
             this.map.getDeliveryTiles().map((tile) => tile.position),
             this.map,
         );
+
+        this.plannerManager = new PlanningManager(this.statsLogger);
     }
 
     /**
@@ -251,6 +255,7 @@ export class BeliefContainer {
      */
     get bestParcelToDeliver(): PositionWithDistance {
         const moveScoreCost: number = GameConfiguration.moveScoreCost;
+        const parcelsVisibility: number = GameConfiguration.parcelVisibilityDistance;
 
         const candidates: PositionWithDistance[] = this.freeParcels
             .filter(
@@ -260,8 +265,12 @@ export class BeliefContainer {
                     this.parcelsByPosition.has(parcel.position) &&
                     !this.agentsByPosition.has(parcel.position),
             )
+            .filter(
+                (parcel: Parcel) =>
+                    parcel.position.manhattanDistance(this.myPosition) <= parcelsVisibility,
+            )
             .map((parcel: Parcel) => {
-                //The cost associated to each deviation step
+                //The cost associated with each deviation step
                 const toParcelPath: Position[] = this.map.calculatePath(
                     this.myPosition,
                     parcel.position,
@@ -873,6 +882,13 @@ export class BeliefContainer {
         );
 
         this._parcelsToBeSynchronized.clear();
+
+        const parcelsVisibility: number = GameConfiguration.parcelVisibilityDistance;
+        const visibleParcels: number = this.freeParcels.filter(
+            (parcel: Parcel) =>
+                parcel.position.manhattanDistance(this.myPosition) < parcelsVisibility,
+        ).length;
+        this.statsLogger.updateParcelsCount(visibleParcels, this.freeParcels.length);
     }
 
     calculateMovingPath(to: Position, positionsToAvoid: Position[] = []): Position[] {
@@ -1116,6 +1132,8 @@ export class BeliefContainer {
         this._deliveryPointManager.updateOpponentPositions(opponentPositions, this._ownPosition);
 
         this._agentsToBeSynchronized.clear();
+
+        this.statsLogger.updateAgentsCount(this.trustedAgents.length, this.agents.size);
     }
 
     set explorationSector(tilesToExplore: Position[]) {
@@ -1200,6 +1218,15 @@ export class BeliefContainer {
         }
 
         return null;
+    }
+
+    imOnADeliveryTile(): boolean {
+        const deliveryTilePositions: Position[] =
+            this.map
+                .getDeliveryTiles()
+                .map((tile: Tile) => tile.position);
+
+        return !!deliveryTilePositions.find((position: Position) => position.equals(this.myPosition))
     }
 
     isParcelOnPosition(position: Position): boolean {

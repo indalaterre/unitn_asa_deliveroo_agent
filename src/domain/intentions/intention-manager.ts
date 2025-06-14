@@ -1,7 +1,8 @@
 import type { BeliefContainer } from "@domain/beliefs";
 import type { Actuator } from "@domain/communication";
 import { type Desire, DesirePriorities, DesireTypes, type DesiresManager } from "@domain/desires";
-import type { Agent, Parcel } from "@domain/models";
+import type { PositionWithDistance } from "@domain/map";
+import { type Agent, GameConfiguration, type Parcel } from "@domain/models";
 import type { Directions, Position } from "@domain/models/environment";
 import type { HandoffCoordinator } from "@domain/models/handoff-coordinator";
 import { Intention, IntentionTypes } from "@domain/models/intention";
@@ -96,7 +97,7 @@ export class IntentionManager {
                 return;
             }
 
-            console.log(`Current intention: ${this.currentIntention.toString()}`);
+            //console.log(`Current intention: ${this.currentIntention.toString()}`);
 
             // Execute the intention
             const success: boolean = await this.executeIntention(this._currentIntention);
@@ -107,7 +108,7 @@ export class IntentionManager {
 
                 // Check if we should give up on this intention
                 if (this._currentIntention.shouldGiveUp()) {
-                    console.log(`Giving up on intention: ${this._currentIntention.toString()}`);
+                    //console.log(`Giving up on intention: ${this._currentIntention.toString()}`);
 
                     // Find the desire that generated this intention
                     const relatedDesire: Desire = this.findDesireForIntention(
@@ -134,7 +135,7 @@ export class IntentionManager {
     }
 
     async generateIntentionsFromDesiresIfEmpty(): Promise<void> {
-        if(!this._intentionQueue.size) return;
+        if (!this._intentionQueue.size) return;
         return this.generateIntentionsFromDesires();
     }
 
@@ -240,7 +241,7 @@ export class IntentionManager {
      */
     private generateExploreIntention(desire: Desire): void {
         if (
-            this.currentIntention?.type === IntentionTypes.EXPLORE ||
+            this.currentIntention?.isExplore ||
             this._intentionQueue.hasElementOfType(IntentionTypes.EXPLORE)
         )
             return;
@@ -265,9 +266,7 @@ export class IntentionManager {
      * @param desire The desire to convert
      */
     private generatePickupHandoffIntention(desire: Desire): void {
-        const intention: Intention = Intention.moveHandOff(desire.position, () =>
-            !this.beliefs.myPosition.equals(desire.position),
-        );
+        const intention: Intention = Intention.moveHandOff(desire.position);
 
         this.processMovingIntention(intention, desire);
         this.addIntentionToQueue(intention, desire.priority);
@@ -282,7 +281,10 @@ export class IntentionManager {
         switch (intention.type) {
             case IntentionTypes.PICK_UP:
                 // Check if we're at the right position
-                return this.beliefs.myPosition.equals(intention.position);
+                return (
+                    this.beliefs.myPosition.equals(intention.position) &&
+                    this.beliefs.isParcelOnPosition(intention.position)
+                );
 
             case IntentionTypes.PUT_DOWN:
                 // Check if we're at a delivery point and carrying parcels
@@ -325,7 +327,9 @@ export class IntentionManager {
             case IntentionTypes.DELIVER:
             case IntentionTypes.EXPLORE:
                 // These intentions are complete when we reach the target position
-                isCompleted = this.beliefs.myPosition.equals(intention.position) || !intention.context?.path?.length;
+                isCompleted =
+                    this.beliefs.myPosition.equals(intention.position) ||
+                    !intention.context?.path?.length;
                 break;
 
             case IntentionTypes.PICK_UP:
@@ -363,33 +367,7 @@ export class IntentionManager {
                 return await this.executePickup();
 
             case IntentionTypes.PUT_DOWN:
-                // Execute put-down action
-                const carriedParcels: Parcel[] = this.beliefs.carriedParcels;
-                const parcelsToDrop: string[] = this.beliefs.carryingParcelIds;
-                const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
-
-                // Calculate points earned from the actual parcel scores
-                let totalPointsEarned = 0;
-                const droppedParcelIds: string[] = Array.from(parcelsDropped);
-
-                // Find the parcels that were dropped and sum their scores
-                for (const parcel of carriedParcels) {
-                    if (droppedParcelIds.includes(parcel.id)) {
-                        // Use the current value of the decaying score
-                        totalPointsEarned += parcel.score.currentValue;
-                    }
-                }
-
-                // Record the delivery in our statistics logger with actual points
-                this.statsLogger.recordDelivery(droppedParcelIds, totalPointsEarned);
-
-                // Update beliefs
-                this.beliefs.updateDroppedParcels(parcelsDropped);
-
-                // Unregister from the current delivery point to reduce congestion tracking
-                this.beliefs.unregisterFromDeliveryPoint(this.beliefs.myPosition);
-
-                return Promise.resolve(true);
+                return await this.executePutDown();
 
             case IntentionTypes.PICKUP_HANDOFF: {
                 await this.handoffCoordinator.createHandoffRequest(
@@ -412,6 +390,36 @@ export class IntentionManager {
         }
     }
 
+    private async executePutDown() {
+        // Execute put-down action
+        const carriedParcels: Parcel[] = this.beliefs.carriedParcels;
+        const parcelsToDrop: string[] = this.beliefs.carryingParcelIds;
+        const parcelsDropped: Set<string> = await this.actuator.putDown(parcelsToDrop);
+
+        // Calculate points earned from the actual parcel scores
+        let totalPointsEarned = 0;
+        const droppedParcelIds: string[] = Array.from(parcelsDropped);
+
+        // Find the parcels that were dropped and sum their scores
+        for (const parcel of carriedParcels) {
+            if (droppedParcelIds.includes(parcel.id)) {
+                // Use the current value of the decaying score
+                totalPointsEarned += parcel.score.currentValue;
+            }
+        }
+
+        // Record the delivery in our statistics logger with actual points
+        this.statsLogger.recordDelivery(droppedParcelIds, totalPointsEarned);
+
+        // Update beliefs
+        this.beliefs.updateDroppedParcels(parcelsDropped);
+
+        // Unregister from the current delivery point to reduce congestion tracking
+        this.beliefs.unregisterFromDeliveryPoint(this.beliefs.myPosition);
+
+        return Promise.resolve(true);
+    }
+
     /**
      * Moves the agent towards a target position
      * @param intention The intention with calculated path
@@ -429,6 +437,10 @@ export class IntentionManager {
             ).length
         ) {
             await this.executePickup();
+        }
+
+        if(this.beliefs.isCarrying && this.beliefs.imOnADeliveryTile()) {
+            await this.executePutDown();
         }
 
         if (this.beliefs.isPositionOccupied(nextPosition)) {
@@ -449,10 +461,8 @@ export class IntentionManager {
         }
 
         const nextDirection: Directions = this.beliefs.myPosition.getDirection(nextPosition);
-        const successfulMove: boolean = await this.actuator.move(nextDirection).catch((error) => {
-            console.log(error.track);
-            return false;
-        });
+        const successfulMove: boolean = await this.actuator.move(nextDirection);
+
         if (successfulMove) {
             this.beliefs.synchronizeMyPosition(nextPosition);
         }
@@ -555,6 +565,19 @@ export class IntentionManager {
 
                 this.currentIntention = Intention.deliverHandoff(meetingPosition, agentId, benefit);
                 pathToPosition = pathToMeeting;
+            } else if (!GameConfiguration.usePddl) {
+                //We run this only in case PDDL is not activated. This is needed to keep the PDDL clean of external code modifications
+                const bestDeliveryPoint: PositionWithDistance = this.beliefs.findBestDelivery();
+                if (!bestDeliveryPoint?.position.equals(this.currentIntention.position)) {
+                    pathToPosition = this.beliefs.calculateMovingPath(
+                        bestDeliveryPoint.position,
+                        this.beliefs.getOccupiedPositions(),
+                    );
+                }
+
+                this.currentIntention.updatePosition(bestDeliveryPoint.position, [
+                    IntentionTypes.PUT_DOWN,
+                ]);
             }
         }
 

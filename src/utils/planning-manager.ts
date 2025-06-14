@@ -1,4 +1,5 @@
 import { Duration, GameConfiguration } from "@domain/models";
+import type { StatisticsLogger } from "@domain/models/statistics-logger";
 import axios from "axios";
 
 export type Agent = {
@@ -37,6 +38,8 @@ export class PlanningManager {
      * @private
      */
     private planningSemaphore = false;
+
+    constructor(private readonly statsLogger: StatisticsLogger) {}
 
     /**
      * @returns The average execution time
@@ -201,6 +204,8 @@ export class PlanningManager {
                 ...this.planningExecutionDurations,
                 Duration.fromMilliseconds(metrics.planning_time_ms),
             ];
+
+            this.statsLogger.updatePlanningTime(this.avgExecutionDuration);
         }
 
         return plan;

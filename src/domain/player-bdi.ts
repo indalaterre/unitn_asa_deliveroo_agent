@@ -69,7 +69,7 @@ export class PlayerBDI {
         private readonly playerInfo: PlayerInfo,
     ) {
         // Initialize belief system
-        this._beliefs = new BeliefContainer(playerInfo, matchMap);
+        this._beliefs = new BeliefContainer(playerInfo, this._statsLogger, matchMap);
 
         // Initialize desires manager
         this._desiresManager = new DesiresManager(this._beliefs);
@@ -117,7 +117,7 @@ export class PlayerBDI {
         // Set up interval to log statistics periodically
         setInterval(() => {
             this._statsLogger.logStatistics();
-        }, 10000); // Log every 10 seconds
+        }, 1000); // Log every 10 seconds
 
         // Set up interval to send hello messages
         setInterval(async () => {

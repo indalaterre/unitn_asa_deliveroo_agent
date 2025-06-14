@@ -51,7 +51,11 @@ function getConfiguration(): AgentConfiguration {
 
     const agentName: string = (config.get("agent-name") as string) ?? "main";
     // --- Construct env file path ---
-    const envPath: string = path.resolve(__dirname, "..", `.player.env.${agentName}`);
+    const envPath: string = path.resolve(
+        __dirname,
+        "..",
+        `levels-configs/.player.env.${agentName}`,
+    );
 
     // --- Load env file ---
     dotenv.config({ path: envPath });

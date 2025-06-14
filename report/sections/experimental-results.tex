@@ -11,23 +11,24 @@ For each level, the agent was initialized in a fixed position and allowed to int
 Table~\ref{tab:results} summarizes the scores obtained in each level.
 
 \begin{table}
-    \centering
-    \caption{Total scores achieved by the single agent in 5-minute episodes}
-    \label{tab:results}
-    \begin{tabular}{|l|c|c|}
-        \hline
-        \textbf{Level} & \textbf{Single-Agent Score} \\
-        \hline
-        Level 1        &  \phantom{-}158             \\
-        Level 2        &  \phantom{-}142             \\
-        Level 3        &  \phantom{-}173             \\
-        Level 4        &  \phantom{-}166             \\
-        Level 5        &  \phantom{-}149             \\
-        \hline
-        \textbf{Average} & \textbf{157.6}            \\
-        \hline
-    \end{tabular}
+	\centering
+	\caption{Total scores achieved by the single and multi-agent systems in 5-minute episodes}
+	\label{tab:results}
+	\begin{tabular}{|l|c|c|}
+		\toprule
+		\textbf{Level} & \textbf{With PDDL} & \textbf{Without PDDL} \\
+		\midrule
+		Level 1        &  \phantom{-}500             & \phantom{-}640              \\
+		Level 2        &  \phantom{-}498             & \phantom{-}1623              \\
+		Level 3        &  \phantom{-}1150             & \phantom{-}1700              \\
+		Level 4        &  \phantom{-}166             & \phantom{-}170              \\
+		Level 5        &  \phantom{-}149             & \phantom{-}153              \\
+		\midrule
+		\textbf{Average} & \textbf{157.6}            & \textbf{162.2}              \\
+		\bottomrule
+	\end{tabular}
 \end{table}
+
 
 \subsection{Discussion}
 
