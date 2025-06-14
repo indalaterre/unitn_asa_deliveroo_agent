@@ -1,0 +1,29 @@
+\section{Handoff}
+
+Handoff is a process where one agent requests assistance from another agent to facilitate the delivery of parcels.
+
+This situation occurs when the agent carrying the parcels recognizes that another agent is in a better position to deliver the package more efficiently.
+This may be due to being closer to a drop box or because the agent currently carrying the parcels is unable to reach a drop box.
+By coordinating handoff, agents can optimize the delivery process, ensuring that parcels are delivered efficiently.
+
+\subsection{Coordination}
+
+Coordination between agents is performed by exchanging messages between them.
+
+When an agent determines that a handoff is beneficial, it sends a request to another agent.
+An agent evaluates a handoff as beneficial when the other agent is closer to a delivery position.
+
+When an agent sends a handoff request, it calculate a meeting point to include in the request.
+This meeting point is determined by finding the average position between the agent making the handoff request and the agent receiving it.
+The agent sending the request immediately begins moving toward the meeting point.
+
+The agent receiving the handoff request evaluates whether it is able to reach the location indicated as the meeting point and responds to the request positively or negatively based on this evaluation.
+
+\subsection{Performing the handoff}
+
+When a handoff request is accepted, the agent that created the request deposits the parcels it carries at the designated meeting point.
+Once deposited, the parcels will not be considered in future pickup evaluations of the agent.
+
+Instead, the responding agent moves to the handoff location where the requesting agent deposits the parcels and proceeds to collect them in a standard pickup interaction.
+
+At this point, the handoff is considered complete by both agents.
