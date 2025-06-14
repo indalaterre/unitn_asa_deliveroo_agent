@@ -22,6 +22,7 @@
     "start:25c1_1": "npm run build:bdi && node dist/main-bdi.js --agent-name=25c1_1",
     "start:25c1_2": "npm run build:bdi && node dist/main-bdi.js --agent-name=25c1_2",
     "start:25c1_3": "npm run build:bdi && node dist/main-bdi.js --agent-name=25c1_3",
+    "start:25c1_4": "npm run build:bdi && node dist/main-bdi.js --agent-name=25c1_4",
     "pre-commit": "bione ci src/",
     "lint": "biome check src/",
     "lint-fix": "biome check --write src/"

@@ -118,10 +118,12 @@ export class DesiresManager {
             return;
         }
 
+        const normalizedScore: number = bestParcel.context.parcel.currentScore / GameConfiguration.parcelAvgReward;
+
         const pickupDesire: Desire = Desire.pickupParcel(
             bestParcel.position.equals(this.beliefs.myPosition)
                 ? DesirePriorities.PRIORITY_PICKUP // Highest priority
-                : DesirePriorities.PICKUP, // Medium priority
+                : DesirePriorities.PICKUP + normalizedScore, // Medium priority
             bestParcel.position,
             (bestParcel.context.parcel as Parcel).id,
         );
