@@ -2,39 +2,121 @@
 
 \subsection{Definition and Role}
 
-In the Deliveroo agent, intentions represent the agent’s chosen commitments: the plans it is actively pursuing. While desires are possible goals the agent might want to achieve, intentions are selected desires that have been turned into concrete actions. These intentions guide the agent’s behavior over time and are at the core of its deliberative process.
+In the Deliveroo agent, intentions represent the agent's chosen commitments—the plans it is actively pursuing. While desires are possible goals the agent might want to achieve, intentions are selected desires that have been turned into concrete, executable actions. These intentions guide the agent's behavior over time and are at the core of its deliberative process.
 
-\subsection{Execution Loop}
+The intention system serves as the bridge between high-level goals (desires) and low-level actions (actuator commands), providing a structured approach to goal commitment and execution in dynamic environments.
 
-At every decision step, the agent follows a simple control loop: it selects the most promising desire, translates it into an intention, and attempts to execute that intention. If the intention is successful and reaches its goal, it is removed. If not, it may be retried or eventually discarded. This process is illustrated below:
+\subsection{Intention Types and Architecture}
 
-\begin{algorithm}
+The agent supports several distinct intention types, each designed for specific behavioral patterns:
+
+\begin{itemize}
+    \item \texttt{MOVE}: Navigate to a specific position using pathfinding
+    \item \texttt{PICK\_UP}: Execute parcel pickup at the current location
+    \item \texttt{PUT\_DOWN}: Drop carried parcels at delivery points
+    \item \texttt{DELIVER}: Combined movement and delivery action
+    \item \texttt{EXPLORE}: Investigate unexplored areas of the environment
+    \item \texttt{PICKUP\_HANDOFF}: Coordinate parcel handoff with other agents
+\end{itemize}
+
+Each intention encapsulates not only the action type but also contextual information such as target positions, execution paths, and collaboration metadata.
+
+\subsection{Priority-Based Intention Management}
+
+The intention system employs a sophisticated priority queue mechanism to manage multiple competing goals:
+
+\paragraph{Priority Queue Architecture}
+Intentions are organized in a priority queue where higher-priority intentions are executed first. The priority calculation considers both the original desire priority and the intention type, ensuring critical actions (e.g., urgent pickups) take precedence over routine activities (e.g., exploration).
+
+\subsection{Execution Loop and Control Flow}
+
+The intention execution follows a sophisticated control loop that balances reactivity with commitment:
+
+\begin{algorithm}[htbp!]
 	\DontPrintSemicolon
-	\caption{Deliberation and Intention Execution Loop}
+	\caption{Enhanced Intention Processing Loop}
 	\While{agent is active}{
-		$desire \gets$ select highest-priority desire\;
-		$intention \gets$ generate intention from $desire$\;
-		execute($intention$)\;
-		\If{intention is complete}{
-			remove $intention$ from memory\;
+		\If{intention queue is empty OR current intention should be abandoned}{
+			$intention \gets$ poll highest-priority intention from queue\;
+			synchronize intention with current state\;
 		}
-		\ElseIf{intention repeatedly fails}{
-			mark $desire$ as failed and discard $intention$\;
+		
+		\If{current intention exists}{
+			\If{intention is no longer valid}{
+				discard current intention\;
+				\textbf{continue}\;
+			}
+			
+			$success \gets$ execute(intention)\;
+			
+			\If{success}{
+				reset failure counter\;
+				\If{intention is complete}{
+					remove intention\;
+				}
+			}
+			\Else{
+				increment failure counter\;
+				\If{failure threshold exceeded}{
+					mark related desire as failed\;
+					discard intention\;
+				}
+			}
 		}
 	}
 \end{algorithm}
 
-This simple but flexible loop enables the agent to dynamically adapt its behavior as goals and circumstances evolve in the environment.
+\subsection{Intelligent Path Planning and Execution}
 
-\subsection{Composite Intentions for Pickup and Delivery}
+\paragraph{Dynamic Path Recalculation}
+Moving intentions (MOVE, DELIVER, EXPLORE) incorporate sophisticated pathfinding that adapts to environmental changes. When the planned path becomes blocked by other agents or obstacles, the system automatically recalculates alternative routes without abandoning the overall intention.
 
-A noteworthy case occurs with parcel pickup and delivery tasks. These usually require a **sequence** of actions: first moving to the parcel location, and then picking it up. For this reason, the agent generates two separate intentions:
-\begin{enumerate}
-	\item A \texttt{MOVE} intention to navigate to the parcel location.
-	\item A \texttt{PICK\_UP} intention to collect the parcel once the agent arrives.
-\end{enumerate}
+\paragraph{Opportunistic Pickup Behavior}
+During movement execution, the agent exhibits opportunistic behavior by automatically picking up parcels encountered along the path. This optimization reduces the need for separate pickup intentions and improves overall efficiency.
 
-This modular decomposition allows the agent to treat complex goals as a series of manageable steps, improving robustness and reactivity. For instance, if the MOVE intention fails due to a blocked path, it can be abandoned or rerouted without affecting the overall pickup goal.
+\subsection{Failure Handling and Recovery Mechanisms}
 
-The same logic applies to deliveries: the agent first moves toward the delivery point, and only once it arrives does it execute the actual drop-off action. This separation of concerns allows the system to better handle interruptions, rerouting, or replanning based on updated environmental information.
+The intention system implements robust failure handling to maintain agent reliability:
 
+\paragraph{Failure Classification}
+The system distinguishes between different types of failures:
+\begin{itemize}
+    \item \textbf{Temporary failures}: Blocked paths, occupied positions
+    \item \textbf{Permanent failures}: Unreachable destinations, invalid states
+    \item \textbf{Context failures}: Outdated information, changed conditions
+\end{itemize}
+
+\paragraph{Adaptive Retry Strategy}
+Intentions maintain failure counters and employ exponential backoff strategies. Temporary failures trigger retries with increasing delays, while permanent failures result in immediate intention abandonment and desire marking.
+
+\paragraph{Graceful Degradation}
+When high-priority intentions fail repeatedly, the system gracefully degrades to lower-priority alternatives, ensuring the agent remains productive even under adverse conditions.
+
+\subsection{Collaborative Intention Coordination}
+
+\paragraph{Handoff Intention Management}
+The system supports sophisticated handoff coordination through specialized PICKUP\_HANDOFF intentions. These intentions coordinate with other agents to optimize parcel delivery chains, considering factors such as:
+\begin{itemize}
+    \item Agent proximity and availability
+    \item Delivery efficiency gains
+    \item Communication overhead
+    \item Coordination timing
+\end{itemize}
+
+\paragraph{Conflict Resolution}
+The intention system includes mechanisms to detect and resolve conflicts with other agents, such as competing for the same parcel or delivery point. Priority-based resolution ensures fair resource allocation while maintaining system efficiency.
+
+\subsection{State Synchronization and Validation}
+
+\paragraph{Intention Validity Checking}
+Before execution, each intention undergoes validity checking to ensure it remains relevant and executable:
+\begin{itemize}
+    \item Position-based validation for movement intentions
+    \item Resource availability for pickup/delivery intentions
+    \item Agent state consistency for all intention types
+\end{itemize}
+
+\paragraph{Context Synchronization}
+The system continuously synchronizes intention context with the current world state, updating paths, targets, and execution parameters as environmental conditions change.
+
+This comprehensive intention management system enables the agent to maintain goal-directed behavior while adapting to the dynamic nature of the delivery environment, balancing commitment with flexibility to achieve optimal performance.

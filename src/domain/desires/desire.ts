@@ -6,10 +6,10 @@ import type { Position } from "../models/environment";
  * The priority of a desire
  */
 export enum DesirePriorities {
-    HANDOFF_PRIORITY = 85,
     PRIORITY_PICKUP = 100,
     PRIORITY_DELIVERY = 100,
     DELIVERY = 90,
+    HANDOFF_PRIORITY = 85,
     PICKUP = 80,
     EXPLORATION = 50,
 }
@@ -23,7 +23,6 @@ export enum DesireTypes {
     PICKUP_HANDOFF = "PICKUP_HANDOFF",
     PUT_DOWN_PARCEL = "PUT_DOWN_PARCEL",
     EXPLORE_ENVIRONMENT = "EXPLORE_ENVIRONMENT",
-    PUT_DOWN_HANDOFF = "PUT_DOWN_HANDOFF",
 }
 
 /**
@@ -75,18 +74,6 @@ export class Desire extends AbstractHashable implements Hashable {
         return new Desire(DesireTypes.EXPLORE_ENVIRONMENT, priority, position);
     }
 
-    // Handoff is now handled as part of the DELIVER_PARCEL desire
-
-    /**
-     * Creates a desire to put down parcels at a delivery point
-     * @param priority The priority of the desire
-     * @param position The position of the delivery point
-     * @param parcelIds The IDs of the parcels to put down
-     */
-    static putDownParcel(priority: number, position: Position, parcelIds: string[]): Desire {
-        return new Desire(DesireTypes.PUT_DOWN_PARCEL, priority, position, { parcelIds });
-    }
-
     /**
      * @param priority
      * @param parcelIds         the parcels the other agent will bring
@@ -96,29 +83,6 @@ export class Desire extends AbstractHashable implements Hashable {
     static pickupHandoff(priority: number, parcelIds: string[], meetingPosition: Position): Desire {
         return new Desire(DesireTypes.PICKUP_HANDOFF, priority, meetingPosition, {
             parcelIds,
-        });
-    }
-
-    /**
-     *
-     * @param priority
-     * @param partnerId
-     * @param parcelIds
-     * @param position
-     * @param benefit
-     * @returns
-     */
-    static putDownHandoff(
-        priority: number,
-        partnerId: string,
-        parcelIds: string[],
-        position: Position,
-        benefit: number,
-    ): Desire {
-        return new Desire(DesireTypes.PUT_DOWN_HANDOFF, priority, position, {
-            partnerId,
-            parcelIds,
-            benefit,
         });
     }
 

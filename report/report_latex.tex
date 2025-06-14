@@ -75,15 +75,14 @@ Each desire is associated with a utility score based on criteria like proximity,
 Intentions are the subset of desires that the agent commits to pursuing. Commitment is governed by a filtering function that considers:
 \begin{itemize}
 	\item The utility of each desire,
-	\item Resource limitations (e.g., the agent can carry only one parcel at a time),
 	\item Team-level priorities (if operating in collaborative mode).
 \end{itemize}
 
-Once intentions are selected, the agent invokes a planning function to generate an executable plan $\pi$ — a sequence of actions such as \texttt{move}, \texttt{pickup}, and \texttt{deliver}. The plan is constructed using the goal-directed search A*, constrained by the current beliefs.
+Once intentions are selected, the agent invokes a planning function to generate an executable intention plan $\pi$ — a sequence of actions such as \texttt{move}, \texttt{pickup}, and \texttt{deliver}. The plan is constructed using the goal-directed search A*, constrained by the current beliefs.
 
 \subsection{Communication and Coordination}
 
-In collaborative scenarios, agents utilize DeliverooJS’s messaging system to share critical beliefs. This includes discovered parcel locations, unreachable areas, or intentions (e.g., ``I am picking up parcel at (5,3)''). The belief base is extended to include received messages, which influence both desire generation and intention filtering.
+In collaborative scenarios, agents utilize DeliverooJS’s messaging system to share critical beliefs. This includes discovered parcel locations, unreachable areas, or requests for help (e.g., \textit{``You're in a better position to deliver package p1. Let's meet at (5,3) so I can pass it to you''}). The belief base is extended to include received messages, which influence both desire generation and intention filtering.
 
 Communication is kept lightweight to minimize overhead and ensure reactivity. Messages are structured and timestamped, and each agent processes them before the next BDI cycle.
 
@@ -126,7 +125,7 @@ The DeliverooJS environment enables agents to exchange information using two pri
 
 At runtime, each agent periodically broadcasts a \texttt{HELLO} message using \texttt{shout}. This behavior is crucial in dynamic scenarios where agents can spawn at any time during execution. Broadcasting \texttt{HELLO} ensures that newly spawned agents can discover existing teammates and integrate into a collaborative strategy.
 
-Once an agent receives a valid \texttt{HELLO} message and confirms it matches expected grammar and cryptographic properties, it adds the sender to its list of known allies. At that point, the agent can initiate collaborative behaviors, such as sharing parcel discoveries, coordinating pickup assignments, or load balancing deliveries. [\textit{Collaboration logic will be described in a future section.}]
+Once an agent receives a valid \texttt{HELLO} message and confirms it matches expected grammar and cryptographic properties, it adds the sender to its list of known allies. At that point, the agent can initiate collaborative behaviors, such as sharing parcel discoveries, coordinating pickup assignments, or load balancing deliveries.
 
 \subsubsection{Security and Trust}
 
@@ -221,5 +220,8 @@ The agent maintains a priority queue of candidate tiles ranked by $S(p)$ and sel
 
 %! Experimental results subsection
 \input{sections/experimental-results}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
 
 \end{document}
