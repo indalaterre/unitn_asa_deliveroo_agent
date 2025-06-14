@@ -129,9 +129,9 @@ export class IntentionManager {
                     this._currentIntention = null;
                 }
             }
-        } else {
+        } /*else {
             console.log("There are no intention possible. WAITING for best moments");
-        }
+        }*/
     }
 
     async generateIntentionsFromDesiresIfEmpty(): Promise<void> {

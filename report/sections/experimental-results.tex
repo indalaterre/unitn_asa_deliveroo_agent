@@ -12,22 +12,25 @@ Table~\ref{tab:results} summarizes the scores obtained in each level.
 
 \begin{table}
 	\centering
-	\caption{Total scores achieved by the single and multi-agent systems in 5-minute episodes}
+	\caption{Performance per level: total score, average score per parcel, and number of delivered parcels for PDDL and non-PDDL agents}
 	\label{tab:results}
-	\begin{tabular}{|l|c|c|}
+	\begin{tabular}{|l|ccc|ccc|}
 		\toprule
-		\textbf{Level} & \textbf{With PDDL} & \textbf{Without PDDL} \\
+		\textbf{Level} & \multicolumn{3}{c|}{\textbf{With PDDL}} & \multicolumn{3}{c|}{\textbf{Without PDDL}} \\
+		\cmidrule{2-7}
+		& \textbf{Total} & \textbf{Avg} & \textbf{\# Parcels} & \textbf{Total} & \textbf{Avg} & \textbf{\# Parcels} \\
 		\midrule
-		Level 1        &  \phantom{-}500             & \phantom{-}640              \\
-		Level 2        &  \phantom{-}498             & \phantom{-}1623              \\
-		Level 3        &  \phantom{-}1150             & \phantom{-}1700              \\
-		Level 4        &  \phantom{-}166             & \phantom{-}170              \\
-		Level 5        &  \phantom{-}149             & \phantom{-}153              \\
+		25c1\_1 & 330 & 10.0 & 33 & 380 & 10.0 & 38 \\
+		25c1\_2 & 222 & 6.59 & 32 & 1079 & 19.74 & 53 \\
+		25c1\_3 & 1104 & 13.51 & 79 & 1303 & 14.46 & 87 \\
+		25c1\_4 & 1169 & 67.18 & 18 & 2569 & 77.85 & 33 \\
+		25c1\_5 & 2616 & 61.57 & 39 & 3955 & 68.82 & 57 \\
+		25c1\_6 & 619 & 20.64 & 28 & 839 & 22.75 & 36 \\
 		\midrule
-		\textbf{Average} & \textbf{157.6}            & \textbf{162.2}              \\
-		\bottomrule
+		% optional average row
 	\end{tabular}
 \end{table}
+
 
 
 \subsection{Discussion}

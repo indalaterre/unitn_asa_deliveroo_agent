@@ -48,10 +48,130 @@ services:
       - LEVEL=levels/25c1_4
       - PORT=4001
 
-  25c2_hallway:
+  25c1_5:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4007:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_5
+      - PORT=4001
+
+  25c1_6:
     image: maurodep92/unitn_asa_deliveroojs
     ports:
       - "4008:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_6
+      - PORT=4001
+
+  25c1_7:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4009:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_7
+      - PORT=4001
+
+  25c1_8:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4010:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_8
+      - PORT=4001
+
+  25c1_9:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4011:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_9
+      - PORT=4001
+
+  25c2_1:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4012:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_1
+      - PORT=4001
+
+  25c2_2:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4013:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_2
+      - PORT=4001
+
+  25c2_3:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4014:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_3
+      - PORT=4001
+
+  25c2_4:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4015:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_4
+      - PORT=4001
+
+  25c2_5:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4016:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_5
+      - PORT=4001
+
+  25c2_6:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4017:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_6
+      - PORT=4001
+
+  25c2_7:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4018:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_7
+      - PORT=4001
+
+  25c2_hallway:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4099:4001"
     restart: unless-stopped
 
     environment:
