@@ -53,7 +53,7 @@ export class PlanningManager {
     }
 
     /**
-     * Run the Fast Downward planner on the given domain and problem files
+     * Run the ENHSP planner on the given domain and problem files
      * @param worldState  the world state
      * @returns The planner output as a string
      */

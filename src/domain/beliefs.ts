@@ -388,10 +388,6 @@ export class BeliefContainer {
                     // Get additional agent density from the surrounding area
                     const agentsDensity = this._agentsDensityOnTile.get(tilePosition) ?? 0;
 
-                    // Get tactical advantage score (higher is better)
-                    const tacticalAdvantage =
-                        this._deliveryPointManager.getTacticalAdvantageScore(tilePosition);
-
                     // Calculate final weighted score
                     const weightedScore = competitiveScore + agentsDensity * 0.3;
 
@@ -405,12 +401,7 @@ export class BeliefContainer {
                             weightedDistance: weightedScore,
                             isBlocked: isBlocked,
                             isReachable: isReachable,
-                            path: path,
-                            opponentCongestion:
-                                this._deliveryPointManager.getOpponentCongestionLevel(tilePosition),
-                            estimatedWaitTime:
-                                this._deliveryPointManager.getEstimatedWaitTime(tilePosition),
-                            tacticalAdvantage: tacticalAdvantage,
+                            path: path
                         },
                     } as PositionWithDistance;
                 })
@@ -560,7 +551,6 @@ export class BeliefContainer {
             locations: [...deliveryLocations, ...nonDeliveryLocations],
         };
 
-        // 2. Call the planner
         let planSteps: { action: string; parameters: string[] }[];
         try {
             planSteps = await this.plannerManager.runPlanner(worldState);
@@ -571,7 +561,6 @@ export class BeliefContainer {
             return new HashMap<Position, PositionWithDistance[]>();
         }
 
-        // 5.1. Group pickups before deliveries
         const pickupDeliveryGroups: PickupDeliveryGroup[] = [];
         let currentPickups: PickupAction[] = [];
         let groupPickupOrder = 0;
@@ -619,14 +608,12 @@ export class BeliefContainer {
             });
         }
 
-        // 6. Convert to PositionWithDistance objects with context
         const result: HashMap<Position, PositionWithDistance[]> = new HashMap<
             Position,
             PositionWithDistance[]
         >();
         for (const group of pickupDeliveryGroups) {
             for (const action of group.pickups) {
-                // Match parcel by ID (case-insensitive)
                 const parcel: Parcel = visibleParcels.find(
                     (p) => p.id.toLowerCase() === action.parcelId.toLowerCase(),
                 );
@@ -676,7 +663,6 @@ export class BeliefContainer {
             }
         }
 
-        // Limit the number of results if specified
         return result;
     }
 
@@ -980,7 +966,12 @@ export class BeliefContainer {
         // Find the best delivery point for our parcels
         const bestDelivery: PositionWithDistance = this.findBestDelivery();
 
-        if (bestDelivery.distance < this.findBestDelivery(agentPosition).distance) {
+        const bestAgentDelivery = this.findBestDelivery(agentPosition);
+
+        const distanceToDelivery = this.map.calculatePath(this.myPosition, bestDelivery.position);
+        const agentDistanceToDelivery = this.map.calculatePath(agentPosition, bestAgentDelivery.position);
+
+        if (distanceToDelivery?.length < agentDistanceToDelivery?.length) {
             return -1;
         }
 
@@ -993,7 +984,7 @@ export class BeliefContainer {
             return -1;
         }
 
-        //SPECIAL CASE: Path from my position to best delivery is blocked. We evaluate asking help to a friend
+        //SPECIAL CASE: Path from my position to best delivery is blocked. We evaluate asking help a friend
         if (bestDelivery?.distance === Number.POSITIVE_INFINITY) {
             const pathLength: number = myPathToAgent[0].length + myPathToAgent[1].length;
             if (!pathLength) {
@@ -1026,7 +1017,7 @@ export class BeliefContainer {
                                              PARTNER
 
          */
-        const timeSavings: number = myDistanceToMeeting; //+ friendDistanceToMeeting;
+        const timeSavings: number = myDistanceToMeeting + friendDistanceToMeeting;
 
         const totalParcelValue: number = this._carriedParcels.reduce(
             (sum: number, parcel: Parcel) => sum + parcel.currentScore,
@@ -1034,8 +1025,6 @@ export class BeliefContainer {
         );
 
         // We increase the priority of the handoff if parcels are closer to expiration (their score is low)
-        //return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
-
         return Math.min(timeSavings - Math.floor(totalParcelValue / 10), 1);
     }
 
