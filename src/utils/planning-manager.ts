@@ -1,4 +1,5 @@
 import { Duration, GameConfiguration } from "@domain/models";
+import type { StatisticsLogger } from "@domain/models/statistics-logger";
 import axios from "axios";
 
 export type Agent = {
@@ -27,12 +28,6 @@ export interface WorldState {
 
 export class PlanningManager {
     /**
-     * The planner to be invoked
-     * @private
-     */
-    private readonly PLANNER_NAME: string = "enhsp";
-
-    /**
      * The number of executions. Used to calculate the AVG planning time
      * @private
      */
@@ -43,6 +38,8 @@ export class PlanningManager {
      * @private
      */
     private planningSemaphore = false;
+
+    constructor(private readonly statsLogger: StatisticsLogger) {}
 
     /**
      * @returns The average execution time
@@ -56,7 +53,7 @@ export class PlanningManager {
     }
 
     /**
-     * Run the Fast Downward planner on the given domain and problem files
+     * Run the ENHSP planner on the given domain and problem files
      * @param worldState  the world state
      * @returns The planner output as a string
      */
@@ -64,6 +61,8 @@ export class PlanningManager {
         if (this.planningSemaphore) {
             return [];
         }
+
+        const plannerHost: string = GameConfiguration.plannerHost;
 
         this.planningSemaphore = true;
 
@@ -78,26 +77,23 @@ export class PlanningManager {
             };
 
             // Make the HTTP request to the planning service
-            const response = await axios.post(
-                `http://localhost:6790/package/${this.PLANNER_NAME}/solve`,
-                payload,
-            );
+            const response = await axios.post(`${plannerHost}/plan`, payload);
 
             let result: string | string[];
             // Process the response from the planner server
-            if (response.data.plan) {
+            if (response?.data?.result?.plan) {
                 // Successfully found a plan
                 this.planningSemaphore = false;
-                result = this.parsePlannerOutput(response.data.plan);
+                result = this.parsePlannerOutput(
+                    response.data.result.plan,
+                    response.data.result.metrics,
+                );
             } else if (response.data.stdout) {
                 // Check if the planner found the problem unsolvable
                 if (
                     response.data.stdout.includes("No relaxed solution") ||
                     response.data.stdout.includes("Completely explored state space -- no solution")
                 ) {
-                    console.warn(
-                        "Fast Downward found the problem unsolvable. Check your PDDL domain and problem definitions.",
-                    );
                     // Return a special marker for unsolvable problems
                     result = "UNSOLVABLE";
                 }
@@ -190,9 +186,8 @@ export class PlanningManager {
         }
     }
 
-    private parsePlannerOutput(output: string): string | string[] {
+    private parsePlannerOutput(lines: string[], metrics?: any): string | string[] {
         const plan = [];
-        const lines = output.split("\n");
 
         for (const line of lines) {
             const match = line.match(/^\s*(\d+(\.\d+)?):\s+\(([^)]+)\)/);
@@ -204,10 +199,14 @@ export class PlanningManager {
             }
         }
 
-        this.planningExecutionDurations = [
-            ...this.planningExecutionDurations,
-            Duration.fromMilliseconds(PlanningManager.extractPlanningTime(output)),
-        ];
+        if (metrics?.planning_time_ms) {
+            this.planningExecutionDurations = [
+                ...this.planningExecutionDurations,
+                Duration.fromMilliseconds(metrics.planning_time_ms),
+            ];
+
+            this.statsLogger.updatePlanningTime(this.avgExecutionDuration);
+        }
 
         return plan;
     }
@@ -225,7 +224,6 @@ export class PlanningManager {
     (carrying ?a - agent ?p - package)
     (available ?p - package)
     (different ?from ?to - location)
-    (has-delivered ?a - agent)
   )
   
   (:functions
@@ -234,7 +232,8 @@ export class PlanningManager {
    
     ;; Metric functions
     (total-cost) ;; Total move cost. Must be minimized (The cost will contain the parcels decaying information)
-    (carrying-packages)
+    (carrying-parcels)
+    (delivered-parcels) ;; Number of delivered parcels. Should be maximized
   )
 
   (:action move
@@ -260,7 +259,7 @@ export class PlanningManager {
     :effect (and
       (carrying ?a ?p)
       (not (at-pkg ?p ?l))
-      (increase (carrying-packages) 1)
+      (increase (carrying-parcels) 1)
     )
   )
 
@@ -273,9 +272,9 @@ export class PlanningManager {
     )
     :effect (and
       (not (carrying ?a ?p))
-      (has-delivered ?a)
-      (decrease (carrying-packages) 1)
-      (decrease (total-cost) (score ?p)) ;; Basic cost for movement
+      (decrease (carrying-parcels) 1)
+      (decrease (total-cost) (score ?p)) ;; Reward with package score
+      (increase (delivered-parcels) 1) ;; Increase the number of delivered parcels
     )
   )
 )
@@ -307,16 +306,7 @@ export class PlanningManager {
             .map((p) => `(available ${PlanningManager.sanitizeName(p.name)})`)
             .join("\n    ");
 
-        const deliveryLocation: PddlLocation[] = state.locations.filter(
-            (location: PddlLocation) => location.isDelivery,
-        );
-        if (!deliveryLocation?.length) {
-            throw new Error("Planning must have a delivery location");
-        }
-
-        const isDeliveryPredicated = `(is-delivery ${PlanningManager.sanitizeName(deliveryLocation[0].position)})`;
-
-        const moveScoreCost = GameConfiguration.moveScoreCost;
+        const moveScoreCost: number = GameConfiguration.moveScoreCost;
         const differences: Set<string> = new Set<string>();
         const distanceValues: any[] = [];
         // Calculate Manhattan distance (assuming locations are in format 'x,y')
@@ -360,7 +350,7 @@ export class PlanningManager {
         const scores: Set<string> = new Set<string>();
         for (const parcel of state.packages) {
             const fixedScore: number = Math.round(parcel.score * metricWeights.scores);
-            scores.add(`(= (score ${PlanningManager.sanitizeName(parcel.name)}) ${-fixedScore})`);
+            scores.add(`(= (score ${PlanningManager.sanitizeName(parcel.name)}) ${fixedScore})`);
         }
 
         const distancesPredicates: Set<string> = new Set<string>();
@@ -379,23 +369,36 @@ export class PlanningManager {
             atAgents,
             atPkgs,
             availablePackages,
-            isDeliveryPredicated,
             Array.from(distancesPredicates).join("\n    "),
             differencesPredicates,
             scoresPredicates,
         ];
 
+        const deliveryLocations: Set<string> = new Set<string>();
+        for (const location of state.locations) {
+            if (location.isDelivery) {
+                deliveryLocations.add(
+                    `(is-delivery ${PlanningManager.sanitizeName(location.position)})`,
+                );
+            }
+        }
+
+        if (deliveryLocations.size === 0) {
+            throw new Error("Planning must have at least one delivery location");
+        }
+
         // Initialize total-cost to 0
-        const hasNotDelivered = `(not (has-delivered ${agentObjs}))`;
         const totalCost = "(= (total-cost) 0)";
-        const carryingPackages = "(= (carrying-packages) 0)";
+        const carryingPackages = "(= (carrying-parcels) 0)";
+        const deliveredParcels = "(= (delivered-parcels) 0)";
 
         // Join all predicates and functions, filtering out any that might still be empty
         const initPredicatesAndFunctions = [
             ...initPredicates,
+            Array.from(deliveryLocations).join("\n    "),
             totalCost,
             carryingPackages,
-            hasNotDelivered,
+            deliveredParcels,
         ]
             .filter((predicate: string) => predicate?.trim())
             .join("\n    ");
@@ -414,11 +417,10 @@ export class PlanningManager {
     ${initPredicatesAndFunctions}
   )
   (:goal (and
-    (has-delivered ${agentObjs})
-    (= (carrying-packages) 0))
+    (>= (delivered-parcels) 1)
+    (= (carrying-parcels) 0))
   )
-  ;; FastDownward does not support maximization problems. We need to invert all the scores
-  (:metric minimize (total-cost)))
+  (:metric minimize (total-cost))
 )
 `;
     }

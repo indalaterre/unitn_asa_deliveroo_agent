@@ -9,6 +9,7 @@ export enum DesirePriorities {
     PRIORITY_PICKUP = 100,
     PRIORITY_DELIVERY = 100,
     DELIVERY = 90,
+    HANDOFF_PRIORITY = 85,
     PICKUP = 80,
     EXPLORATION = 50,
 }
@@ -73,16 +74,16 @@ export class Desire extends AbstractHashable implements Hashable {
         return new Desire(DesireTypes.EXPLORE_ENVIRONMENT, priority, position);
     }
 
-    // Handoff is now handled as part of the DELIVER_PARCEL desire
-
     /**
-     * Creates a desire to put down parcels at a delivery point
-     * @param priority The priority of the desire
-     * @param position The position of the delivery point
-     * @param parcelIds The IDs of the parcels to put down
+     * @param priority
+     * @param parcelIds         the parcels the other agent will bring
+     * @param meetingPosition   the meeting position
+     * @returns
      */
-    static putDownParcel(priority: number, position: Position, parcelIds: string[]): Desire {
-        return new Desire(DesireTypes.PUT_DOWN_PARCEL, priority, position, { parcelIds });
+    static pickupHandoff(priority: number, parcelIds: string[], meetingPosition: Position): Desire {
+        return new Desire(DesireTypes.PICKUP_HANDOFF, priority, meetingPosition, {
+            parcelIds,
+        });
     }
 
     /**
@@ -108,7 +109,7 @@ export class Desire extends AbstractHashable implements Hashable {
      * @returns TRUE if the desire is of type "EXPLORATION"
      */
     get isExplore(): boolean {
-        return this.type === DesireTypes.EXPLORE_ENVIRONMENT
+        return this.type === DesireTypes.EXPLORE_ENVIRONMENT;
     }
 
     /**

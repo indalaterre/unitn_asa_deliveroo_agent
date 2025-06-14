@@ -1,0 +1,147 @@
+\section{Desires}
+
+Desires represent the goals that the agent might pursue, based on its current beliefs. In our system, each desire is a structured object defined by a type, priority value, optional target position, and additional contextual information. Desires are generated dynamically in each BDI reasoning cycle and are later filtered to determine which intention(s) to commit to.
+
+\subsection{Desire Representation}
+
+Each desire belongs to one of several predefined types, formalized in the \texttt{DesireTypes} enumeration:
+
+\begin{itemize}
+    \item \texttt{DELIVER\_PARCEL}: Bring one or more carried parcels to the delivery zone,
+    \item \texttt{PICKUP\_PARCEL}: Navigate to a known parcel and pick it up,
+    \item \texttt{EXPLORE\_ENVIRONMENT}: Investigate unexplored spawn tiles,
+    \item \texttt{PUT\_DOWN\_PARCEL}: Drop parcels on the delivery point (e.g., after a handoff),
+    \item \texttt{PICKUP\_HANDOFF}: Navigate to a known parcel and ask for help delivering it
+\end{itemize}
+
+Each desire is also associated with a numeric priority from the \texttt{DesirePriorities} enumeration. These priorities determine the desirability of a goal and influence which intentions are selected. Examples include:
+
+\begin{itemize}
+    \item \texttt{PRIORITY\_PICKUP} = 100 (e.g., urgent parcel pickup),
+    \item \texttt{PRIORITY\_DELIVERY} = 100,
+    \item \texttt{DELIVERY} = 90,
+    \item \texttt{HANDOFF\_PRIORITY} = 85,
+    \item \texttt{PICKUP} = 80 (standard pickups),
+    \item \texttt{EXPLORATION} = 50 (spawn tile exploration).
+\end{itemize}
+
+Each BDI cycle triggers a regeneration of the desire set. As new parcels are discovered, agent roles evolve, or tiles are explored, old desires are discarded and new ones are created. This dynamic refresh allows the agent to stay responsive and adaptive to environmental changes.
+
+\subsection{Optional Planning Mode (PDDL)}
+
+In addition to the default reactive behavior, this agent supports an optional planning mode based on PDDL (Planning Domain Definition Language) \cite{mcdermott1998pddl}. This mode is intended for users who want the agent to reason over longer-term sequences of actions using classical planning techniques.
+
+\paragraph{Motivation.}
+The PDDL mode is particularly useful in structured delivery scenarios where multiple packages must be picked up and delivered with consideration for path costs and decaying rewards. Rather than making short-sighted decisions at every step, the planner computes a full plan that aims to optimize overall performance based on the current world state.
+
+\paragraph{Planning Structure.}
+The domain defines three core actions: \texttt{move}, \texttt{pick-up}, and \texttt{deliver}. Each action contributes to changes in the agent's state, the spatial distribution of parcels, and the evolution of scoring or cost-related fluents. The planning objective is to minimize a total cost function that captures both movement effort and penalties associated with parcel score decay.
+
+The cost of executing a \texttt{move} action from location \( A \) to location \( B \) is computed as:
+
+\[
+\text{cost}_{\text{move}} = \text{ManhattanDistance}(A, B) \times \left( \frac{\text{moveDuration}}{\text{scoreDecayInterval}} \right)
+\]
+
+This formulation reflects the trade-off between spatial traversal and temporal decay, where longer movements incur proportionally higher penalties due to the effect of delayed delivery on parcel score.
+
+
+
+The corresponding problem file encodes the concrete instance: one agent located at a specific position, several packages placed across the map, and a known delivery location. Each parcel has an associated negative score (representing urgency), and distances between all relevant locations are defined using metric functions.
+
+\paragraph{Core Logic.}
+The planner's goal is to ensure that the agent has delivered at least one parcel and is no longer carrying any. This is formalized in the goal clause as:
+\begin{verbatim}
+	(has-delivered agent)
+	(= (carrying-parcels) 0)
+\end{verbatim}
+
+To reach this state, the planner chooses a sequence of move, pickup, and deliver actions that jointly satisfy the goal while minimizing the total cost, which integrates both physical distance and the negative reward associated with late deliveries.
+
+\paragraph{Composite Cost Model.}
+Unlike typical planning domains focused only on distance, the agent's domain includes custom cost modeling:
+\begin{itemize}
+    \item \texttt{move} actions increase \texttt{total-cost} by the distance between locations.
+    \item \texttt{deliver} actions decrease \texttt{total-cost} by the (negative) score of the delivered package.
+\end{itemize}
+
+As a result, the agent is incentivized to prioritize high-value parcels even if they are farther away, as their negative score contributes to reducing the final cost function.
+
+\paragraph{Optional Use and Flexibility.}
+The PDDL planning mode is optional and disabled by default. Users can enable it through a configuration flag. When activated, the agent queries an external planner with the current domain and problem instance and receives a sequence of grounded actions to execute. Given the temporal and numeric characteristics of the domain, we chose \textbf{ENHSP} (Expressive Numeric Heuristic Search Planner) as the backend planner. \textbf{ENHSP} supports PDDL domains with numeric fluents, temporal constraints, and action costs, which are essential to modeling parcel decay, movement penalties, and delivery rewards in our environment. Its support for heuristic-guided search with cost-sensitive objectives makes it particularly well-suited to compute high-quality plans under constrained conditions.
+
+
+This approach is ideal in deterministic settings or when a user needs a globally optimized delivery plan. However, due to its offline nature and computational overhead, it may be less suited to rapidly changing environments where new parcels or obstacles appear dynamically.
+
+To illustrate how the planning domain models these dynamics, we provide below a representative excerpt of the PDDL \texttt{domain} and \texttt{problem} definitions used by the agent when invoking the external planner.
+
+
+\begin{lstlisting}[language=PDDL, caption={Example of generated PDDL domain and problem showing delivery planning logic.}]
+(define (domain delivery)
+  (:requirements :strips :typing :action-costs)
+  (:types agent package location)
+
+  (:predicates
+    (at ?a - agent ?l - location)
+    (at-pkg ?p - package ?l - location)
+    (carrying ?a - agent ?p - package)
+    (is-delivery ?l - location)
+    (available ?p - package)
+    (has-delivered ?a - agent)
+    (different ?from ?to - location)
+  )
+
+  (:functions
+    (score ?p - package)
+    (distance ?from ?to - location)
+    (total-cost)
+    (carrying-parcels)
+  )
+
+  (:action deliver
+    :parameters (?a - agent ?p - package ?l - location)
+    :precondition (and
+      (at ?a ?l)
+      (carrying ?a ?p)
+      (is-delivery ?l)
+    )
+    :effect (and
+      (not (carrying ?a ?p))
+      (has-delivered ?a)
+      (decrease (carrying-parcels) 1)
+      (decrease (total-cost) (score ?p)) ; Score is negative: lowers total cost
+    )
+  )
+)
+
+(define (problem delivery-instance)
+  (:domain delivery)
+  (:objects
+    agent1 - agent
+    pkg1 - package
+    locA locB locC - location
+  )
+
+  (:init
+    (at agent1 locA)
+    (at-pkg pkg1 locB)
+    (is-delivery locC)
+    (available pkg1)
+    (different locA locB)
+    (different locB locC)
+    (= (score pkg1) -20)
+    (= (distance locA locB) 2)
+    (= (distance locB locC) 3)
+    (= (total-cost) 0)
+    (= (carrying-parcels) 0)
+    (not (has-delivered agent1))
+  )
+
+  (:goal (and
+    (has-delivered agent1)
+    (= (carrying-parcels) 0)
+  ))
+
+  (:metric minimize (total-cost))
+)
+\end{lstlisting}

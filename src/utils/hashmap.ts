@@ -93,6 +93,10 @@ export class HashMap<K extends Hashable, V> {
         }
     }
 
+    public get isEmpty(): boolean {
+        return this.size === 0;
+    }
+
     public copy(): HashMap<K, V> {
         const map = new Map(this._map);
         return new HashMap(map);

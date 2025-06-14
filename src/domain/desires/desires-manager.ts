@@ -1,11 +1,12 @@
+import type { BeliefContainer } from "@domain/beliefs";
+import { Desire, DesirePriorities, DesireTypes } from "@domain/desires/desire";
 import type { PositionWithDistance } from "@domain/map";
-import { type Agent, GameConfiguration, type Parcel } from "@domain/models";
+import { GameConfiguration, type Parcel } from "@domain/models";
+import type { Position } from "@domain/models/environment";
 import { PriorityQueue } from "@domain/models/priority-queue";
+import type { HashMap } from "@utils/hashmap";
 import { HashSet } from "@utils/hashset";
 import { InternalEventManager } from "@utils/internal-event-manager";
-import type { BeliefContainer } from "../beliefs";
-import type { Position } from "../models/environment";
-import { Desire, DesirePriorities, DesireTypes } from "./desire";
 
 /**
  * Manages the agent's desires
@@ -26,16 +27,23 @@ export class DesiresManager {
 
     /**
      * Creates a new desires manager
-     * @param beliefs The agent's beliefs
+     * @param beliefs            The agent's beliefs
      */
     constructor(private readonly beliefs: BeliefContainer) {}
+
+    /**
+     * Generates new desires only in case there are no actions to be taken
+     */
+    async generateDesiresIfWaiting(): Promise<void> {
+        if (this._activeDesires.size > 0) return;
+        return this.generateDesires();
+    }
 
     /**
      * Generates desires based on the current beliefs
      */
     async generateDesires(): Promise<void> {
         // Generate desires based on current state
-        this.generateDeliveryDesires();
 
         // Use PDDL-based pickup desires generation if enabled
         if (GameConfiguration.usePddl) {
@@ -46,11 +54,38 @@ export class DesiresManager {
                 await this.generatePickupDesiresWithPDDL();
             }
         } else {
+            this.generateDeliveryDesires();
             this.generatePickupDesires();
         }
 
         this.generateExplorationDesires();
-        InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
+
+        this._activeDesires.size &&
+            InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
+    }
+
+    private generateDeliveryDesireToPosition(
+        deliveryPosition: Position,
+        plannedInAdvance = false,
+    ): void {
+        // Only generate delivery desires if carrying parcels
+        if (!deliveryPosition || (!plannedInAdvance && !this.beliefs.carryingParcelIds?.length)) {
+            return;
+        }
+
+        const desirePriority: DesirePriorities =
+            this.beliefs.carryingParcelIds?.length &&
+            deliveryPosition.equals(this.beliefs.myPosition)
+                ? DesirePriorities.PRIORITY_DELIVERY // This has a highest priority
+                : DesirePriorities.DELIVERY;
+
+        const putDownDesire: Desire = Desire.deliverParcel(
+            desirePriority,
+            deliveryPosition,
+            this.beliefs.carryingParcelIds,
+        );
+
+        this._activeDesires.add(putDownDesire, putDownDesire.priority);
     }
 
     /**
@@ -58,116 +93,13 @@ export class DesiresManager {
      * @private
      */
     private generateDeliveryDesires(): void {
-        // Only generate delivery desires if carrying parcels
-        if (!this.beliefs.isCarrying) {
-            return;
-        }
-
         // Find the best delivery point
         const deliveryPoint: PositionWithDistance = this.beliefs.findBestDelivery();
         if (!deliveryPoint?.position) {
             return;
         }
 
-        // If already at delivery point, generate PUT_DOWN desire
-        if (
-            this.beliefs.carryingParcelIds?.length
-            && deliveryPoint.position.equals(this.beliefs.myPosition)
-        ) {
-            const putDownDesire = Desire.putDownParcel(
-                DesirePriorities.PRIORITY_DELIVERY, // High priority
-                deliveryPoint.position,
-                this.beliefs.carryingParcelIds,
-            );
-
-            this._activeDesires.add(putDownDesire, putDownDesire.priority);
-        } else {
-            // Check if a handoff would be beneficial
-            const potentialHandoffPartner = this.evaluatePotentialHandoffPartners();
-
-            if (potentialHandoffPartner) {
-                // Create a DELIVER desire with handoff context
-                const { agentId, meetingPosition, benefit } = potentialHandoffPartner;
-
-                // Create context with both parcel IDs and handoff information
-                const context = {
-                    parcelIds: this.beliefs.carryingParcelIds,
-                    handoff: {
-                        partnerId: agentId,
-                        meetingPosition: meetingPosition,
-                        benefit: benefit,
-                    },
-                };
-
-                // Create the desire with the combined context
-                const deliverDesire: Desire = new Desire(
-                    DesireTypes.DELIVER_PARCEL,
-                    Math.min(85, 60 + Math.floor(benefit / 5)), // Priority based on benefit
-                    deliveryPoint.position,
-                    context,
-                );
-
-                this._activeDesires.add(deliverDesire, deliverDesire.priority);
-            } else {
-                // Standard delivery desire without handoff
-                const deliverDesire: Desire = Desire.deliverParcel(
-                    DesirePriorities.DELIVERY, // Medium-high priority
-                    deliveryPoint.position,
-                    this.beliefs.carryingParcelIds,
-                );
-
-                this._activeDesires.add(deliverDesire, deliverDesire.priority);
-            }
-        }
-    }
-
-    /**
-     * Evaluates potential handoff partners and returns the best one if beneficial
-     * @returns The best handoff partner information or null if no beneficial handoff
-     * @private
-     */
-    private evaluatePotentialHandoffPartners(): {
-        agentId: string;
-        meetingPosition: Position;
-        benefit: number;
-    } | null {
-        // Find potential handoff partners
-        const agents: Agent[] = this.beliefs.trustedAgents;
-        let bestPartner = null;
-        let maxBenefit = 0;
-
-        // Evaluate each agent as a potential handoff partner
-        for (const agent of agents) {
-            // Skip if agent is not trusted
-            if (!this.beliefs.isTrustedAgent(agent.agentId)) {
-                continue;
-            }
-
-            // Calculate benefit of handoff
-            const handoffBenefit = this.beliefs.evaluateHandoffBenefit(agent.agentId);
-
-            // Only consider handoff if beneficial and better than current best
-            if (handoffBenefit > 0 && handoffBenefit > maxBenefit) {
-                // Calculate meeting position (midpoint between agents)
-                const handoffPaths: Position[][] = this.beliefs.calculateMeetingPointPaths(
-                    agent.position,
-                );
-
-                if (handoffPaths?.length >= 2 && handoffPaths[1].length > 0) {
-                    const meetingPosition: Position = handoffPaths[1][0];
-
-                    bestPartner = {
-                        agentId: agent.agentId,
-                        meetingPosition: meetingPosition,
-                        benefit: handoffBenefit,
-                    };
-
-                    maxBenefit = handoffBenefit;
-                }
-            }
-        }
-
-        return bestPartner;
+        return this.generateDeliveryDesireToPosition(deliveryPoint.position);
     }
 
     /**
@@ -186,25 +118,17 @@ export class DesiresManager {
             return;
         }
 
-        // If already at parcel position, generate PICKUP desire
-        if (bestParcel.position.equals(this.beliefs.myPosition)) {
-            const pickupDesire: Desire = Desire.pickupParcel(
-                DesirePriorities.PRIORITY_PICKUP, // Highest priority
-                bestParcel.position,
-                (bestParcel.context.parcel as Parcel).id,
-            );
+        const normalizedScore: number = bestParcel.context.parcel.currentScore / GameConfiguration.parcelAvgReward;
 
-            this._activeDesires.add(pickupDesire, pickupDesire.priority);
-        } else {
-            // Otherwise, generate MOVE desire to get to the parcel
-            const moveDesire = Desire.pickupParcel(
-                DesirePriorities.PICKUP, // Medium priority
-                bestParcel.position,
-                (bestParcel.context.parcel as Parcel).id,
-            );
+        const pickupDesire: Desire = Desire.pickupParcel(
+            bestParcel.position.equals(this.beliefs.myPosition)
+                ? DesirePriorities.PRIORITY_PICKUP // Highest priority
+                : DesirePriorities.PICKUP + normalizedScore, // Medium priority
+            bestParcel.position,
+            (bestParcel.context.parcel as Parcel).id,
+        );
 
-            this._activeDesires.add(moveDesire, moveDesire.priority);
-        }
+        this._activeDesires.add(pickupDesire, pickupDesire.priority);
     }
 
     private evaluateDetourPickups(): void {
@@ -223,10 +147,7 @@ export class DesiresManager {
             const detourDesire: Desire = Desire.pickupParcel(
                 // Priority based on net benefit, but adjusted to be competitive
                 // Higher net benefit = higher priority
-                Math.min(
-                    DesirePriorities.PICKUP + Math.floor(netBenefit / 10),
-                    DesirePriorities.PRIORITY_PICKUP - 5,
-                ),
+                DesirePriorities.DELIVERY + Math.floor(netBenefit / 10),
                 additionalParcel.position,
                 additionalParcel.context.parcel.id,
             );
@@ -254,48 +175,51 @@ export class DesiresManager {
         }
 
         // Use Fast Downward planner to find parcels worth picking up en route to delivery
-        const parcelsToPickup: PositionWithDistance[] =
-            await this.beliefs.generatePickupParcelsWithPDDL(bestDelivery.position);
+        const parcelsToPickup: HashMap<Position, PositionWithDistance[]> =
+            await this.beliefs.generatePickupParcelsWithPDDL();
 
         // If no parcels found, return
-        if (!parcelsToPickup?.length) {
+        if (parcelsToPickup?.isEmpty) {
             return;
         }
 
-        if (parcelsToPickup.length > 1) {
-            const a = 1;
-        }
-
         // Generate desires for each parcel, with priority based on their order in the plan
-        for (const parcel of parcelsToPickup) {
-            // If already at parcel position, generate high priority PICKUP desire
-            if (parcel.position.equals(this.beliefs.myPosition)) {
-                const pickupDesire: Desire = Desire.pickupParcel(
-                    DesirePriorities.PRIORITY_PICKUP, // Highest priority
-                    parcel.position,
-                    parcel.context.parcel.id,
-                );
-                this._activeDesires.add(pickupDesire, pickupDesire.priority);
-            } else {
-                // Calculate priority based on pickup order, net benefit, and action type
-                // Earlier pickups and higher net benefits get higher priority
-                // Regular pick-up actions are prioritized over pick-up-any actions
-                const orderFactor = Math.max(5 - parcel.context.pickupOrder, 0); // 4, 3, 2, 1, 0 for orders 1-5+
-                const benefitFactor = Math.floor(parcel.context.netBenefit / 10);
-                const actionBonus = parcel.context.action === "pick-up" ? 5 : 0;
+        for (const [delivery, pickUps] of parcelsToPickup.entries()) {
+            const parcelIds: string[] = [];
+            for (const parcel of pickUps) {
+                parcelIds.push(parcel.context.parcel.id);
 
-                const priority = Math.min(
-                    DesirePriorities.PICKUP + orderFactor + benefitFactor + actionBonus,
-                    DesirePriorities.PRIORITY_PICKUP - 1,
-                );
+                if (parcel.position.equals(this.beliefs.myPosition)) {
+                    const pickupDesire: Desire = Desire.pickupParcel(
+                        DesirePriorities.PRIORITY_PICKUP, // Highest priority
+                        parcel.position,
+                        parcel.context.parcel.id,
+                    );
+                    this._activeDesires.add(pickupDesire, pickupDesire.priority);
+                } else {
+                    // Calculate priority based on pickup order, net benefit, and action type
+                    // Earlier pickups and higher net benefits get higher priority
+                    // Regular pick-up actions are prioritized over pick-up-any actions
+                    const orderFactor = Math.max(5 - parcel.context.pickupOrder, 0); // 4, 3, 2, 1, 0 for orders 1-5+
+                    const benefitFactor = Math.floor(parcel.context.netBenefit / 10);
+                    const actionBonus = parcel.context.action === "pick-up" ? 5 : 0;
 
-                const moveDesire = Desire.pickupParcel(
-                    priority,
-                    parcel.position,
-                    parcel.context.parcel.id,
-                );
-                this._activeDesires.add(moveDesire, moveDesire.priority);
+                    const priority = Math.min(
+                        DesirePriorities.PICKUP + orderFactor + benefitFactor + actionBonus,
+                        DesirePriorities.PRIORITY_PICKUP - 1,
+                    );
+
+                    const moveDesire: Desire = Desire.pickupParcel(
+                        priority,
+                        parcel.position,
+                        parcel.context.parcel.id,
+                    );
+                    this._activeDesires.add(moveDesire, moveDesire.priority);
+                }
             }
+
+            if (!parcelIds?.length) continue;
+            this.generateDeliveryDesireToPosition(delivery, true);
         }
     }
 
@@ -309,7 +233,7 @@ export class DesiresManager {
      * Generates desires to explore the environment
      * @private
      */
-    private generateExplorationDesires(): void {
+    generateExplorationDesires(): void {
         if (this._activeDesires.hasElementOfType(DesireTypes.EXPLORE_ENVIRONMENT)) {
             return;
         }
@@ -333,6 +257,7 @@ export class DesiresManager {
             );
 
             this._activeDesires.add(exploreDesire, exploreDesire.priority);
+            InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
         }
     }
 
@@ -365,6 +290,15 @@ export class DesiresManager {
         InternalEventManager.emit("desire:failed", desire);
     }
 
-    generateHandoffDesire(requestId: string, meetingPosition: Position): void {}
+    generatePickupHandoffDesire(parcelIds: string[], meetingPosition: Position, benefit = 0): void {
+        const pickUpHandoffDesire: Desire = Desire.pickupHandoff(
+            // benefit will influence the priority
+            DesirePriorities.HANDOFF_PRIORITY - benefit,
+            parcelIds,
+            meetingPosition,
+        );
 
+        this._activeDesires.add(pickUpHandoffDesire, pickUpHandoffDesire.priority);
+        InternalEventManager.emit("desires:updated", this._activeDesires.toArray());
+    }
 }

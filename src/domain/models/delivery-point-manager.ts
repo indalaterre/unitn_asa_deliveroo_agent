@@ -92,20 +92,6 @@ export class DeliveryPointManager {
     }
 
     /**
-     * Registers our agent's intention to use a delivery point
-     * This doesn't increase the opponent count since it's our own agent
-     * @param position The delivery point position
-     */
-    public registerDeliveryIntent(position: Position): void {
-        const status = this._getOrCreateStatus(position);
-
-        // Just update the timestamp since this is our own agent
-        status.lastUpdated = Date.now();
-
-        this._deliveryPointStatus.set(position, status);
-    }
-
-    /**
      * Unregisters our agent from a delivery point (e.g., after delivery is complete)
      * @param position The delivery point position
      */

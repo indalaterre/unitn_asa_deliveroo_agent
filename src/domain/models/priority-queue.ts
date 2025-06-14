@@ -97,6 +97,10 @@ export class PriorityQueue<Type, T extends { type: Type; equals: (any: T) => boo
         );
     }
 
+    public removeElementsOfType(elementType: Type) {
+        this._elements = this._elements.filter((item) => item.element.type !== elementType);
+    }
+
     /**
      * Returns the number of intentions in the queue
      * @returns The number of intentions

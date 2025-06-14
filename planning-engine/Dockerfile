@@ -1,38 +1,28 @@
-FROM aiplanning/planutils:latest
+FROM openjdk:21-slim
 
-RUN apt-get update && apt-get install -y \
-    cmake \
-    g++ \
-    git \
-    curl \
-    wget \
-    flex \
-    bison \
-    && rm -rf /var/lib/apt/lists/*
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y git python3 python3-pip python3-venv curl unzip && \
+    apt-get clean
 
-# Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g npm
+# Clone ENHSP repo and compile
+WORKDIR /app
+RUN git clone https://gitlab.com/enricos83/ENHSP-Public.git enhsp
+WORKDIR /app/enhsp
+RUN chmod +x compile && ./compile
 
-RUN pip install flask
-
-# Create a directory for the application
+# Set up Flask server
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY ./package.json /app/
-RUN npm install
+# Create venv and install Flask
+RUN python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --upgrade pip && \
+    /app/venv/bin/pip install Flask
 
-# Copy the planner server
-COPY ./planner-server.js /app/
+COPY enhsp.py /app/enhsp.py
 
-# Install planutils tools
-RUN planutils install -y enhsp
+# Update command to use Python from the venv
+ENV PATH="/app/venv/bin:$PATH"
 
-RUN planutils activate
-
-# Expose the port for the planner server
-EXPOSE 6789
-# Set the entrypoint to run the Node.js planner server
-CMD ["planutils", "server", "-p", "6789", "-i", "0.0.0.0"]
+EXPOSE 5000
+CMD ["python3", "enhsp.py"]

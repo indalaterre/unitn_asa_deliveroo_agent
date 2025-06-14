@@ -48,6 +48,11 @@ export interface AgentConfiguration {
     usePddl: boolean;
 
     /**
+     * The host for the PDDL planner server
+     */
+    plannerHost: string;
+
+    /**
      * The total score the agent is allowed to carry at the same time
      */
     maxCarryingParcels: number;
@@ -87,6 +92,10 @@ export class GameConfiguration {
 
     static get usePddl(): boolean {
         return GameConfiguration._instance._agentConfiguration.usePddl;
+    }
+
+    static get plannerHost(): string {
+        return GameConfiguration._instance._agentConfiguration.plannerHost;
     }
 
     static get movementDuration(): Duration {

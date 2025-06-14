@@ -18,31 +18,25 @@ function getConfiguration(): AgentConfiguration {
     const options = [
         { name: "host", type: String },
         { name: "token", type: String },
-        { name: "use-pddl", type: Boolean },
+        { name: "use-pddl", type: String },
         { name: "agent-name", type: String },
         { name: "public-key", type: String },
         { name: "private-key", type: String },
+        { name: "planner-host", type: String },
         { name: "hello-interval", type: Number },
         { name: "max-last-heard", type: Number },
-        { name: "start-iterations", type: Number },
-        { name: "planner-docker-image", type: String },
         { name: "max-carrying-parcels", type: Number },
         { name: "agents-density-radius", type: Number },
-        { name: "num-promising-positions", type: Number },
     ];
 
     const defaultValues = new Map<string, string | number | boolean>();
     defaultValues.set("use-pddl", false);
+    defaultValues.set("agent-name", "main");
     defaultValues.set("hello-interval", 2000);
     defaultValues.set("max-last-heard", 6000);
-    defaultValues.set("start-iterations", 10);
-    defaultValues.set("num-promising-positions", 5);
-    defaultValues.set("gaussian-std", 1.0);
-    defaultValues.set("discount-factor", 0.0);
-    defaultValues.set("agent-name", "");
-    defaultValues.set("agents-density-radius", 4);
     defaultValues.set("max-carrying-parcels", 6);
-    defaultValues.set("planner-docker-image", "it.unitn.optic.planner:latest");
+    defaultValues.set("agents-density-radius", 4);
+    defaultValues.set("planner-host", "http://localhost:6790");
 
     // first check if the corresponding environment variables are set
     const config = new Map<string, string | number | boolean>();
@@ -53,18 +47,22 @@ function getConfiguration(): AgentConfiguration {
         config.set(arg, cliArgs[arg]);
     }
 
-    dotenv.config();
+    dotenv.config({ path: ".env" });
 
-    const agentName = cliArgs["agent-name"] ?? "main"; // get 'second', 'third', etc.
+    const agentName: string = (config.get("agent-name") as string) ?? "main";
     // --- Construct env file path ---
-    const envPath = path.resolve(__dirname, "..", `.player.env.${agentName}`);
+    const envPath: string = path.resolve(
+        __dirname,
+        "..",
+        `levels-configs/.player.env.${agentName}`,
+    );
 
     // --- Load env file ---
     dotenv.config({ path: envPath });
 
     for (const option of options) {
-        const varName = option.name.toUpperCase().replace(/-/g, "_");
-        const envValue = process.env[varName];
+        const varName: string = option.name.toUpperCase().replace(/-/g, "_");
+        const envValue: string = process.env[varName];
 
         if (envValue !== undefined) {
             config.set(option.name, option.type(envValue));
@@ -75,11 +73,14 @@ function getConfiguration(): AgentConfiguration {
         }
     }
 
+    //We cannot shorten this statement due to a typescript -> javascript compile error
+    const defaultPddlOption = config.get("use-pddl") || "";
+
     return {
         host: config.get("host") as string,
         token: config.get("token") as string,
-        usePddl: config.get("use-pddl") as boolean,
-        plannerDockerImage: config.get("planner-docker-image") as string,
+        usePddl: defaultPddlOption == "true",
+        plannerHost: config.get("planner-host") as string,
 
         cryptoKeyPaths: {
             publicPath: config.get("public-key") as string,

@@ -1,23 +1,15 @@
 name: deliveroojs
 
 services:
-  # Fast Downward planner service
+  # ENHSP planner service
   planutils-environment:
-    build:
-      context: ./planning-engine
-      dockerfile: Dockerfile
-    container_name: planutils-environment
+    image: maurodep92/unitn_asa_planning-server:enhsp
     ports:
       - "6790:6789"
     restart: unless-stopped
-    privileged: true
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - seccomp:unconfined
 
   25c1_1:
-    image: it.unitn.deliveroojs
+    image: maurodep92/unitn_asa_deliveroojs
     ports:
       - "4003:4001"
     restart: unless-stopped
@@ -27,7 +19,7 @@ services:
       - PORT=4001
 
   25c1_2:
-    image: it.unitn.deliveroojs
+    image: maurodep92/unitn_asa_deliveroojs
     ports:
       - "4004:4001"
     restart: unless-stopped
@@ -37,7 +29,7 @@ services:
       - PORT=4001
 
   25c1_3:
-    image: it.unitn.deliveroojs
+    image: maurodep92/unitn_asa_deliveroojs
     ports:
       - "4005:4001"
     restart: unless-stopped
@@ -47,7 +39,7 @@ services:
       - PORT=4001
 
   25c1_4:
-    image: it.unitn.deliveroojs
+    image: maurodep92/unitn_asa_deliveroojs
     ports:
       - "4006:4001"
     restart: unless-stopped
@@ -56,10 +48,130 @@ services:
       - LEVEL=levels/25c1_4
       - PORT=4001
 
-  25c2_hallway:
-    image: it.unitn.deliveroojs
+  25c1_5:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4007:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_5
+      - PORT=4001
+
+  25c1_6:
+    image: maurodep92/unitn_asa_deliveroojs
     ports:
       - "4008:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_6
+      - PORT=4001
+
+  25c1_7:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4009:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_7
+      - PORT=4001
+
+  25c1_8:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4010:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_8
+      - PORT=4001
+
+  25c1_9:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4011:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c1_9
+      - PORT=4001
+
+  25c2_1:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4012:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_1
+      - PORT=4001
+
+  25c2_2:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4013:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_2
+      - PORT=4001
+
+  25c2_3:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4014:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_3
+      - PORT=4001
+
+  25c2_4:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4015:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_4
+      - PORT=4001
+
+  25c2_5:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4016:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_5
+      - PORT=4001
+
+  25c2_6:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4017:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_6
+      - PORT=4001
+
+  25c2_7:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4018:4001"
+    restart: unless-stopped
+
+    environment:
+      - LEVEL=levels/25c2_7
+      - PORT=4001
+
+  25c2_hallway:
+    image: maurodep92/unitn_asa_deliveroojs
+    ports:
+      - "4099:4001"
     restart: unless-stopped
 
     environment:

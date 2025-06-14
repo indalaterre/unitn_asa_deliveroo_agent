@@ -11,14 +11,20 @@ import { Duration, type EnvironmentConfiguration, Parcel } from "@domain/models"
 import { Agent } from "@domain/models/agent";
 import type { CryptoConfiguration } from "@domain/models/configurations";
 import { DecayingValue } from "@domain/models/decaying-value";
-import type { HandoffRequest } from "@domain/models/handoff-coordinator";
+import type {
+    HandoffRequest,
+    HandoffResponse,
+    HandoffUpdate,
+} from "@domain/models/handoff-coordinator";
 import { IdAware } from "@domain/models/id-aware";
 import { PlayerInfo } from "@domain/player-info";
+import { MessageType } from "./messenger";
 import type {
     AgentPositionUpdate,
     ExplorationSectorAssignment,
-    HandoffConfirmMessage,
     HandoffRequestMessage,
+    HandoffResponseMessage,
+    HandoffUpdateMessage,
     HelloMessage,
     Message,
     Messenger,
@@ -48,48 +54,114 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
             request.parcelIds,
             request.meetingPosition,
             request.urgency,
-            request.timeToMeet,
-            request.expiresAt,
-            request.status,
-            request.estimatedArrivalTime,
         );
 
         return this.sendMessage(message);
     }
 
-    onHandoffRequestReceived(callback: (_: HandoffRequest) => void): void {
+    onHandoffRequestReceived(callback: (request: HandoffRequest) => void): void {
         this.onMessageReceived((message: HandoffRequestMessage) => {
-            const request: HandoffRequest = {
+            if (message.type != MessageType.HANDOFF_REQUEST) {
+                return;
+            }
+
+            const parsedRequest: HandoffRequest = {
                 requestId: message.requestId,
                 initiatorId: message.senderId,
                 receiverId: message.recipientIds[0],
                 parcelIds: message.parcelIds,
-                meetingPosition: message.meetingPosition,
+                meetingPosition: new Position(
+                    message.meetingPosition.row,
+                    message.meetingPosition.column,
+                ),
                 urgency: message.urgency,
-                timeToMeet: message.timeToMeet,
-                expiresAt: message.expiresAt,
+            };
+
+            callback(parsedRequest);
+        });
+    }
+
+    sendHandoffResponseMessage(handoffResponse: HandoffResponse): Promise<void[]> {
+        const message: HandoffResponseMessage = MessageFactory.createHandoffResponseMessage(
+            handoffResponse.requestId,
+            handoffResponse.initiatorId,
+            handoffResponse.recipientIds,
+            handoffResponse.status,
+            handoffResponse.meetingPosition,
+            handoffResponse.estimatedArrivalTime,
+        );
+
+        return this.sendMessage(message);
+    }
+
+    /**
+     *
+     * @param callback
+     */
+    onHandoffResponseReceived(callback: (response: HandoffResponse) => void): void {
+        this.onMessageReceived((message: HandoffResponseMessage) => {
+            if (message.type != MessageType.HANDOFF_RESPONSE) {
+                return;
+            }
+
+            const parsedResponse: HandoffResponse = {
+                requestId: message.requestId,
+                initiatorId: message.senderId,
+                recipientIds: message.recipientIds,
                 status: message.status,
                 estimatedArrivalTime: message.estimatedArrivalTime,
             };
 
-            callback(request);
+            callback(parsedResponse);
         });
     }
 
-    sendHandoffConfirm(
-        requestId: string,
-        initiatorId: string,
-        recipientId: string,
-        estimatedArrivalTime: number,
-    ): Promise<void[]> {
-        const message: HandoffConfirmMessage = MessageFactory.createHandoffConfirmMessage(
-            requestId,
-            initiatorId,
-            recipientId,
-            estimatedArrivalTime,
+    /**
+     *
+     * @param handoffUpdate
+     */
+    sendHandoffUpdateMessage(handoffUpdate: HandoffUpdate): Promise<void[]> {
+        const message: HandoffUpdateMessage = MessageFactory.createHandoffUpdateMessage(
+            handoffUpdate.updateId,
+            handoffUpdate.handoffId,
+            handoffUpdate.initiatorId,
+            handoffUpdate.receiverId,
+            handoffUpdate.updateType,
+            handoffUpdate.meetingPosition,
+            handoffUpdate.actionRequired,
+            handoffUpdate.estimatedArrivalTime,
         );
 
         return this.sendMessage(message);
+    }
+
+    /**
+     *
+     * @param callback
+     */
+    onHandoffUpdateReceived(callback: (response: HandoffUpdate) => void): void {
+        this.onMessageReceived((message: HandoffUpdateMessage) => {
+            if (message.type != MessageType.HANDOFF_UPDATE) {
+                return;
+            }
+
+            console.log(`onHandoffUpdateReceived ${message.updateType}`);
+
+            const parsedResponse: HandoffUpdate = {
+                updateId: message.updateId,
+                handoffId: message.handoffId,
+                initiatorId: message.senderId,
+                receiverId: message.recipientIds[0],
+                updateType: message.updateType,
+                meetingPosition: message.meetingPosition
+                    ? new Position(message.meetingPosition.row, message.meetingPosition.column)
+                    : null,
+                actionRequired: message.actionRequired,
+                estimatedArrivalTime: message.estimatedArrivalTime,
+            };
+
+            callback(parsedResponse);
+        });
     }
 
     move(direction: Directions): Promise<boolean> {
@@ -185,6 +257,10 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
                     movementDuration: SocketClient.parseMillisecondsDurationConfiguration(
                         config,
                         "MOVEMENT_DURATION",
+                    ),
+                    agentTimeout: SocketClient.parseMillisecondsDurationConfiguration(
+                        config,
+                        "AGENT_TIMEOUT",
                     ),
                     agentVisibilityDistance: SocketClient.parseNumericConfiguration(
                         config,
@@ -334,6 +410,10 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onHelloMessageReceived(callback: (agent: Agent) => void): void {
         this.onMessageReceived((message: HelloMessage) => {
+            if (message.type != MessageType.HELLO) {
+                return;
+            }
+
             const agentPosition = new Position(message.position.row, message.position.column);
             const agent = new Agent(
                 message.senderId,
@@ -352,6 +432,10 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onParcelInfoReceived(callback: (parcels: Parcel[]) => void): void {
         this.onMessageReceived((message: ParcelInfoMessage) => {
+            if (message.type != MessageType.PARCEL_INFO) {
+                return;
+            }
+
             const parsedParcels: Parcel[] = message.parcels.map((parcel) => {
                 return new Parcel(
                     parcel.id,
@@ -371,6 +455,10 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onAgentsInfoReceived(callback: (agents: Agent[]) => void): void {
         this.onMessageReceived((message: AgentPositionUpdate) => {
+            if (message.type != MessageType.AGENT_UPDATE) {
+                return;
+            }
+
             const parsedAgents: Agent[] = message.agents.map((agent) => {
                 const agentPosition = new Position(agent.position.row, agent.position.column);
                 return new Agent(agent.agentId, agentPosition, agent.score);
@@ -386,6 +474,10 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
 
     onExplorationAssignmentReceived(callback: (assignment: Position[]) => void): void {
         this.onMessageReceived((message: ExplorationSectorAssignment) => {
+            if (message.type != MessageType.EXPLORATION_SECTOR_ASSIGNMENT) {
+                return;
+            }
+
             if (!message?.positions?.length) callback(message.positions);
         });
     }
@@ -401,7 +493,6 @@ export class SocketClient implements Actuator, Information, Sensor, Messenger {
         const encrypted: string = this._cipher.encryptObject(message);
         const promises: Promise<void>[] = [];
 
-        console.log(`Sending message ${message.type} from ${message.senderId} `);
         for (const recipient of message.recipientIds) {
             promises.push(
                 new Promise((resolve, _reject) => {
