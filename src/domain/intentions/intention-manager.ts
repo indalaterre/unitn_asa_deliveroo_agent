@@ -408,14 +408,16 @@ export class IntentionManager {
             }
         }
 
-        // Record the delivery in our statistics logger with actual points
-        this.statsLogger.recordDelivery(droppedParcelIds, totalPointsEarned);
+        //Updates the statistics only in case of drops on a delivery tile. Handoff collaborations must be ignored
+        if(this.beliefs.imOnADeliveryTile()) {
+            // Record the delivery in our statistics logger with actual points
+            this.statsLogger.recordDelivery(droppedParcelIds, totalPointsEarned);
+            // Unregister from the current delivery point to reduce congestion tracking
+            this.beliefs.unregisterFromDeliveryPoint(this.beliefs.myPosition);
+        }
 
         // Update beliefs
         this.beliefs.updateDroppedParcels(parcelsDropped);
-
-        // Unregister from the current delivery point to reduce congestion tracking
-        this.beliefs.unregisterFromDeliveryPoint(this.beliefs.myPosition);
 
         return Promise.resolve(true);
     }
