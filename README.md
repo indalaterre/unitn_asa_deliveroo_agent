@@ -188,10 +188,10 @@ You can also run agents with custom configurations:
 
 ```bash
 # Reactive BDI mode
-npm run build:bdi && node dist/main-bdi.js --agent-name=YOUR_AGENT_NAME
+npm run build:bdi && node dist/main-bdi.js --agent-name YOUR_AGENT_NAME
 
 # PDDL planning mode
-npm run build:bdi && node dist/main-bdi.js --agent-name=YOUR_AGENT_NAME --use_pddl=true
+npm run build:bdi && node dist/main-bdi.js --agent-name YOUR_AGENT_NAME --use-pddl true
 ```
 
 ## 🐳 Docker Services
