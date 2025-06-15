@@ -252,8 +252,6 @@ The agent includes built-in statistics logging:
 - Parcels delivered
 - Total score achieved
 - Average score per parcel
-- Exploration efficiency
-- Collaboration effectiveness
 
 ## 🔍 Debugging
 
@@ -323,7 +321,6 @@ This implementation is documented in the accompanying academic paper:
 ## 🆘 Support
 
 For issues and questions:
-- Check the troubleshooting section above
 - Review Docker service logs: `docker-compose logs`
 - Verify configuration files in `levels-configs/`
 - Ensure all dependencies are installed

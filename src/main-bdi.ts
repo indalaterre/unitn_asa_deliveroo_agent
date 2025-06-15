@@ -30,7 +30,7 @@ function getConfiguration(): AgentConfiguration {
     ];
 
     const defaultValues = new Map<string, string | number | boolean>();
-    defaultValues.set("use-pddl", false);
+    defaultValues.set("use-pddl", 'false');
     defaultValues.set("agent-name", "main");
     defaultValues.set("hello-interval", 2000);
     defaultValues.set("max-last-heard", 6000);
@@ -66,9 +66,11 @@ function getConfiguration(): AgentConfiguration {
 
         if (envValue !== undefined) {
             config.set(option.name, option.type(envValue));
-        } else if (defaultValues.has(option.name)) {
+        } else if (!config.has(option.name) && defaultValues.has(option.name)) {
             config.set(option.name, defaultValues.get(option.name)!);
-        } else {
+        }
+
+        if(!config.has(option.name)) {
             throw new Error(`Missing option ${option.name}`);
         }
     }
