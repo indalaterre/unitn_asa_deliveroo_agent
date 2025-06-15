@@ -1,6 +1,6 @@
 \section{Experimental Results}
 
-To evaluate the performance of the Deliveroo agent, we conducted experiments on a benchmark suite of 10 delivery environments: 9 designed for single-agent scenarios and 8 for collaborative (multi-agent) scenarios. Each configuration was run for 5 minutes under the same computational constraints. The agent's score is defined by the total value of delivered parcels, accounting for decay over time and movement cost.
+To evaluate the performance of the Deliveroo agent, we conducted experiments on a benchmark suite of 17 delivery environments: 9 designed for single-agent scenarios and 8 for collaborative (multi-agent) scenarios. Each configuration was run for 5 minutes under the same computational constraints (Ubuntu 24.04 run by an Intel® Core™ Ultra 7 165H using 32GB of RAM). The agent's score is defined by the total value of delivered parcels, accounting for decay over time and movement cost.
 
 \subsection{Evaluation Protocol}
 
@@ -35,10 +35,14 @@ Table~\ref{tab:results} summarizes the scores obtained in each competitive level
 		25c1\_5 & 2616 & 61.57 & 39 & 3955 & 68.82 & 57 \\
 		25c1\_6 & 619 & 20.64 & 28 & 839 & 22.75 & 36 \\
 		25c1\_7 & 1022 & 13.43 & 69 & 638 & 15.95 & 40 \\
+		25c1\_8 &  120 &  3.05 & 38 & 1115 & 14.81 & 81 \\
+		25c1\_9 & 2541 &  25 & 99 & 3995 & 31.39 & 131 \\
 		\midrule
 		% optional average row
 	\end{tabular}
 \end{table}
+
+\clearpage
 
 \begin{table}[!htbp]
 	\centering
@@ -65,13 +69,13 @@ Table~\ref{tab:results} summarizes the scores obtained in each competitive level
 
 \subsubsection{Reactive BDI vs PDDL Performance Analysis}
 
-The experimental results reveal a clear performance advantage for the reactive BDI approach over PDDL-based planning across all tested scenarios. As shown in Table~\ref{tab:results}, the non-PDDL (reactive BDI) agent consistently outperforms its PDDL counterpart in terms of total score and number of delivered parcels.
+The experimental results reveal a clear performance advantage for the reactive BDI approach over PDDL-based planning across almost all tested scenarios. As shown in Table~\ref{tab:results}, the non-PDDL (reactive BDI) agent consistently outperforms its PDDL counterpart in terms of total score and number of delivered parcels.
 
 \paragraph{Performance Metrics Comparison}
 The reactive BDI agent demonstrates superior performance across multiple dimensions:
 \begin{itemize}
-    \item \textbf{Total Score}: On average, reactive BDI achieves 47\% higher total scores compared to PDDL
-    \item \textbf{Delivery Efficiency}: The reactive approach delivers 31\% more parcels on average
+    \item \textbf{Total Score}: On average, reactive BDI achieves 24\% higher total scores compared to PDDL
+    \item \textbf{Delivery Efficiency}: The reactive approach delivers 27\% more parcels on average
     \item \textbf{Responsiveness}: Immediate reaction to environmental changes vs. periodic replanning delays
 \end{itemize}
 

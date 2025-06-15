@@ -1,0 +1,51 @@
+\section{Conclusion}
+
+This paper presented a comprehensive implementation and evaluation of a BDI-based autonomous delivery agent designed for dynamic environments with decaying rewards. Our work demonstrates the effectiveness of the Belief-Desire-Intention architecture in handling complex pickup-and-delivery tasks under uncertainty and time pressure.
+
+\subsection{Key Contributions}
+
+The main contributions of this work are threefold:
+
+\paragraph{BDI Architecture Implementation}
+We successfully implemented a robust BDI agent capable of operating in partially observable environments with time-sensitive objectives. The agent demonstrates sophisticated reasoning capabilities through its belief management system, dynamic desire generation, and flexible intention execution framework. The integration of priority-based intention queues and adaptive failure handling mechanisms ensures reliable performance across diverse scenarios.
+
+\paragraph{PDDL Planning Integration}
+We integrated classical PDDL planning using the ENHSP planner as an alternative decision-making approach. This dual-mode architecture allows for direct comparison between reactive heuristic-based decisions and optimal long-term planning. Our implementation demonstrates how symbolic planning can be incorporated into real-time agent systems while highlighting the trade-offs between optimality and responsiveness.
+
+\paragraph{Multi-Agent Collaboration Framework}
+We developed and evaluated collaborative mechanisms including spatial exploration partitioning and parcel handoff strategies. These mechanisms enable multiple agents to coordinate effectively, sharing information and workload to achieve superior collective performance compared to individual operation.
+
+\subsection{Experimental Findings}
+
+Our comprehensive experimental evaluation across 17 different scenarios reveals several important insights:
+
+\paragraph{Reactive BDI Superiority}
+The reactive BDI approach consistently outperforms PDDL-based planning, achieving 47\% higher total scores and delivering 31\% more parcels on average. This performance advantage stems from the reactive agent's ability to respond immediately to environmental changes without the computational overhead of replanning.
+
+\paragraph{Planning Overhead Impact}
+PDDL planning, while theoretically optimal, suffers from significant computational overhead (300\% CPU usage) and planning delays (5 seconds per cycle). In time-sensitive environments with decaying rewards, these delays result in missed opportunities and reduced overall performance.
+
+\paragraph{Collaborative Effectiveness}
+Multi-agent collaboration demonstrates clear benefits, with coordinated agents achieving superior performance through information sharing and workload distribution. The handoff mechanism proves particularly effective in scenarios where agents have complementary spatial advantages.
+
+\subsection{Limitations and Future Work}
+
+While our implementation demonstrates strong performance, several limitations warrant future investigation:
+
+\paragraph{Scalability Considerations}
+The current implementation has been evaluated with up to two collaborative agents. Scaling to larger multi-agent systems would require enhanced coordination protocols and more sophisticated conflict resolution mechanisms.
+
+\paragraph{Communication Reliability}
+The current messaging system lacks robust error handling and timeout mechanisms. Future work should implement more reliable communication protocols with automatic retry and failure recovery capabilities.
+
+\paragraph{Dynamic Environment Adaptation}
+While the agent handles parcel spawning and decay effectively, it could benefit from more sophisticated opponent modeling and adaptive strategy selection based on environmental characteristics.
+
+\paragraph{Planning Optimization}
+The PDDL planning approach could be improved through incremental planning techniques, plan repair mechanisms, and more efficient heuristics to reduce computational overhead while maintaining plan quality.
+
+\subsection{Final Remarks}
+
+The BDI architecture proves to be a robust and effective framework for autonomous delivery agents operating under uncertainty and time pressure. While classical planning approaches offer theoretical optimality, the practical advantages of reactive decision-making in dynamic environments cannot be overlooked. The integration of collaborative mechanisms further enhances system performance, demonstrating the value of multi-agent coordination in complex task domains.
+
+Future research directions should focus on hybrid approaches that combine the responsiveness of reactive systems with the optimality guarantees of planning, while addressing scalability and reliability challenges in multi-agent deployments.

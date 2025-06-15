@@ -52,8 +52,10 @@ The corresponding problem file encodes the concrete instance: one agent located 
 \paragraph{Core Logic.}
 The planner's goal is to ensure that the agent has delivered at least one parcel and is no longer carrying any. This is formalized in the goal clause as:
 \begin{verbatim}
-	(has-delivered agent)
-	(= (carrying-parcels) 0)
+(:goal (and
+  (>= (delivered-parcels) 1)
+  (= (carrying-parcels) 0)
+))
 \end{verbatim}
 
 To reach this state, the planner chooses a sequence of move, pickup, and deliver actions that jointly satisfy the goal while minimizing the total cost, which integrates both physical distance and the negative reward associated with late deliveries.
@@ -87,16 +89,45 @@ To illustrate how the planning domain models these dynamics, we provide below a 
     (carrying ?a - agent ?p - package)
     (is-delivery ?l - location)
     (available ?p - package)
-    (has-delivered ?a - agent)
     (different ?from ?to - location)
   )
 
   (:functions
-    (score ?p - package)
-    (distance ?from ?to - location)
-    (total-cost)
-    (carrying-parcels)
+	(score ?p - package)
+	(distance ?from ?to - location)
+
+	(total-cost)
+	(carrying-parcels)
+	(delivered-parcels)
   )
+  
+  (:action move
+  	:parameters (?a - agent ?from - location ?to - location)
+  	:precondition (and
+  	  (at ?a ?from)
+  	  (different ?from ?to)
+  	)
+  	:effect (and
+  	  (not (at ?a ?from))
+  	  (at ?a ?to)
+  	  (increase (total-cost) (distance ?from ?to))
+  	)
+  )
+  
+  (:action pick-up
+  	:parameters (?a - agent ?p - package ?l - location)
+  	:precondition (and
+	  (at ?a ?l)
+  	  (at-pkg ?p ?l)
+  	  (available ?p)
+  	)
+  	:effect (and
+  	  (carrying ?a ?p)
+  	  (not (at-pkg ?p ?l))
+ 	  (increase (carrying-parcels) 1)
+  	)
+  )
+  
 
   (:action deliver
     :parameters (?a - agent ?p - package ?l - location)
@@ -107,9 +138,9 @@ To illustrate how the planning domain models these dynamics, we provide below a 
     )
     :effect (and
       (not (carrying ?a ?p))
-      (has-delivered ?a)
       (decrease (carrying-parcels) 1)
-      (decrease (total-cost) (score ?p)) ; Score is negative: lowers total cost
+	  (decrease (total-cost) (score ?p))
+	  (increase (delivered-parcels) 1)
     )
   )
 )
@@ -133,15 +164,16 @@ To illustrate how the planning domain models these dynamics, we provide below a 
     (= (distance locA locB) 2)
     (= (distance locB locC) 3)
     (= (total-cost) 0)
-    (= (carrying-parcels) 0)
-    (not (has-delivered agent1))
+	(= (carrying-parcels) 0)
+	(= (delivered-parcels) 0)
   )
 
-  (:goal (and
-    (has-delivered agent1)
-    (= (carrying-parcels) 0)
-  ))
+(:goal (and
+	(>= (delivered-parcels) 1)
+	(= (carrying-parcels) 0)
+))
 
-  (:metric minimize (total-cost))
+  (:metric minimize (+ (total-cost) (* -20 (delivered-parcels))))
+
 )
 \end{lstlisting}

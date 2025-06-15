@@ -29,7 +29,7 @@
 	\IEEEauthorblockN{Mauro Antonio de Palma - 256175}
 	\IEEEauthorblockA{Email: mauroantonio.depalma@studenti.unitn.it}
 	\and
-	\IEEEauthorblockN{Marco Crespi - Matricola}
+	\IEEEauthorblockN{Marco Crespi - 241177}
 	\IEEEauthorblockA{Email: marco.crespi@studenti.unitn.it}
 	
 }
@@ -39,9 +39,12 @@
 
 \input{sections/introduction}
 
+%! Related work section
+\input{sections/related-work}
+
 \section{Agent Architecture}
 
-The agent in this work is designed using the Belief-Desire-Intention (BDI) model, a well-established framework for building rational agents that operate in dynamic, partially observable environments. In this section, we detail how the BDI paradigm is instantiated for our pickup-and-delivery agent within the DeliverooJS game.
+In this section, we detail how the BDI paradigm is instantiated for our pickup-and-delivery agent within the DeliverooJS game.
 
 
 \subsection{Beliefs}
@@ -52,7 +55,6 @@ Beliefs represent the agent’s internal state of knowledge about the world. In 
 	\item The agent’s own position,
 	\item Opponents agent's positions
 	\item Observed parcel locations and their current scores (when visible),
-	\item Messages received from other agents (e.g., shared discoveries),
 	\item Known teammate positions (if communication is enabled).
 \end{itemize}
 
@@ -72,11 +74,7 @@ Each desire is associated with a utility score based on criteria like proximity,
 
 \subsection{Intentions and Planning}
 
-Intentions are the subset of desires that the agent commits to pursuing. Commitment is governed by a filtering function that considers:
-\begin{itemize}
-	\item The utility of each desire,
-	\item Team-level priorities (if operating in collaborative mode).
-\end{itemize}
+Intentions are the subset of desires that the agent commits to pursuing. Commitment is governed by a filtering function that considers the utility of each desire (including the ones coming from team's needs):
 
 Once intentions are selected, the agent invokes a planning function to generate an executable intention plan $\pi$ — a sequence of actions such as \texttt{move}, \texttt{pickup}, and \texttt{deliver}. The plan is constructed using the goal-directed search A*, constrained by the current beliefs.
 
@@ -135,8 +133,6 @@ In addition to encryption, message integrity and authenticity are checked using 
 
 This two-layer approach—cryptographic encryption combined with grammatical validation—helps establish trust and resilience in adversarial or noisy communication settings, where both misinformation and interference are possible.
 
-[\textit{Detailed message formats, encryption keys, and validation schemes will be formalized in a dedicated appendix or protocol specification section.}]
-
 \section{Beliefs}
 
 The belief base defines the agent’s internal model of the environment and is updated over time based on direct perceptions and messages from allies. It includes both static world knowledge and dynamic runtime observations.
@@ -181,8 +177,6 @@ Over time, the agent updates its beliefs to reflect changing or discovered infor
 	\item \textbf{Exploration state:} The agent keeps track of visited and unvisited tiles, allowing it to prioritize unexplored areas when no known parcels are available.
 \end{itemize}
 
-All dynamic beliefs are time-sensitive. Data is associated with timestamps or observation turns and is discarded after expiration or when proven obsolete (e.g., a parcel has already been picked up).
-
 \subsection{Exploration Heuristics}
 
 When no known parcels are immediately reachable, the agent engages in active exploration. Its goal is to discover new parcels by visiting promising areas (\texttt{SPAWN} tiles) where parcels are likely to appear.
@@ -199,7 +193,7 @@ To prioritize unexplored regions, the agent assigns a dynamic score to each spaw
 Formally, the exploration score $S(p)$ for a tile $p$ at position $\mathbf{p}$ is defined as:
 
 \[
-S(p) = \frac{1}{v(\mathbf{p}) + 1} - 0.05 \cdot d(\mathbf{p}) - a(\mathbf{p}) + r
+S(p) = \frac{1}{v(\mathbf{p}) + 1} + 0.05 \cdot d(\mathbf{p}) - a(\mathbf{p}) + r
 \]
 
 where:
@@ -223,6 +217,9 @@ The agent maintains a priority queue of candidate tiles ranked by $S(p)$ and sel
 
 %! Experimental results subsection
 \input{sections/experimental-results}
+
+%! Conclusion section
+\input{sections/conclusion}
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

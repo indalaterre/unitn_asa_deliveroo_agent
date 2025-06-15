@@ -1,0 +1,33 @@
+\section{Related Work}
+
+The development of autonomous agents for pickup-and-delivery tasks intersects several domains, including multi-agent systems and automated planning. This section reviews relevant work in BDI architectures, planning approaches, and multi-agent coordination for delivery scenarios.
+
+\subsection{BDI Architectures}
+
+The Belief-Desire-Intention (BDI) model, originally proposed by Rao and Georgeff, has been extensively applied to autonomous agent design. The model's strength lies in its ability to balance reactive behavior with deliberative planning, making it particularly suitable for dynamic environments.
+
+Several implementations of BDI architectures have been developed for various domains. The JACK agent platform provides a commercial implementation of BDI concepts, while academic frameworks like Jason and JADEX offer research-oriented approaches. These systems typically focus on symbolic reasoning and plan libraries, whereas our implementation emphasizes numerical optimization and real-time performance in continuous environments.
+
+Recent work in BDI systems has explored hybrid approaches combining reactive and deliberative elements. However, most existing implementations do not address the specific challenges of time-sensitive reward optimization and multi-agent coordination in delivery scenarios.
+
+\subsection{Planning for Delivery Tasks}
+
+Classical planning approaches have been applied to various logistics and delivery problems. PDDL-based planners excel at finding optimal solutions for well-defined problems but often struggle with the computational demands of real-time environments.
+
+The ENHSP planner \cite{scala2016enhsp} represents a significant advancement in numeric planning, supporting temporal constraints and cost optimization. While ENHSP can handle the mathematical complexity of our delivery domain, our experimental results highlight the fundamental tension between planning optimality and real-time responsiveness.
+
+Recent research in online planning and plan repair has attempted to address these limitations through incremental planning techniques. However, these approaches have not been extensively evaluated in multi-agent scenarios with decaying rewards.
+
+\subsection{Multi-Agent Coordination}
+
+Multi-agent coordination for delivery tasks has been studied extensively in both theoretical and practical contexts. Coordination mechanisms range from centralized optimization approaches to distributed consensus protocols.
+
+Market-based approaches, such as auction mechanisms, have shown promise for task allocation in multi-agent delivery systems. However, these approaches typically assume static task definitions and may not adapt well to dynamic environments with changing priorities.
+
+Communication-based coordination, similar to our handoff mechanism, has been explored in various forms. Most existing work focuses on task allocation rather than dynamic resource transfer, making our handoff approach a novel contribution to the field.
+
+\subsection{Hybrid Reactive-Deliberative Systems}
+
+The integration of reactive and deliberative components in autonomous agents has been a persistent research challenge. Layered architectures, such as the subsumption architecture, provide one approach to this integration, while other work has focused on switching between different reasoning modes based on environmental conditions.
+
+Our dual-mode implementation (reactive BDI vs. PDDL planning) provides a direct comparison of these approaches within the same agent framework. This methodology offers insights into the practical trade-offs between different reasoning paradigms that are often discussed theoretically but rarely evaluated empirically.

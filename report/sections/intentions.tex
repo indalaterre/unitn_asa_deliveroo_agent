@@ -30,10 +30,11 @@ Intentions are organized in a priority queue where higher-priority intentions ar
 
 \subsection{Execution Loop and Control Flow}
 
-The intention execution follows a sophisticated control loop that balances reactivity with commitment:
+The intention execution follows a control loop that balances reactivity with commitment. It shown by Algorithm~\ref{alg:intention-processing}.
 
 \begin{algorithm}[htbp!]
 	\DontPrintSemicolon
+	\label{alg:intention-processing}
 	\caption{Enhanced Intention Processing Loop}
 	\While{agent is active}{
 		\If{intention queue is empty OR current intention should be abandoned}{
@@ -69,7 +70,7 @@ The intention execution follows a sophisticated control loop that balances react
 \subsection{Intelligent Path Planning and Execution}
 
 \paragraph{Dynamic Path Recalculation}
-Moving intentions (MOVE, DELIVER, EXPLORE) incorporate sophisticated pathfinding that adapts to environmental changes. When the planned path becomes blocked by other agents or obstacles, the system automatically recalculates alternative routes without abandoning the overall intention.
+Moving intentions (MOVE, DELIVER, EXPLORE) incorporate pathfinding that adapts to environmental changes. When the planned path becomes blocked by other agents or obstacles, the system automatically recalculates alternative routes without abandoning the overall intention.
 
 \paragraph{Opportunistic Pickup Behavior}
 During movement execution, the agent exhibits opportunistic behavior by automatically picking up parcels encountered along the path. This optimization reduces the need for separate pickup intentions and improves overall efficiency.
@@ -85,12 +86,6 @@ The system distinguishes between different types of failures:
     \item \textbf{Permanent failures}: Unreachable destinations, invalid states
     \item \textbf{Context failures}: Outdated information, changed conditions
 \end{itemize}
-
-\paragraph{Adaptive Retry Strategy}
-Intentions maintain failure counters and employ exponential backoff strategies. Temporary failures trigger retries with increasing delays, while permanent failures result in immediate intention abandonment and desire marking.
-
-\paragraph{Graceful Degradation}
-When high-priority intentions fail repeatedly, the system gracefully degrades to lower-priority alternatives, ensuring the agent remains productive even under adverse conditions.
 
 \subsection{Collaborative Intention Coordination}
 
