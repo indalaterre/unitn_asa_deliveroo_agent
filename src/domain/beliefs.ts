@@ -121,8 +121,7 @@ export class BeliefContainer {
     /**
      * Map that associates a position to a set of parcels
      */
-    private readonly parcelsByPosition: MultiValueHashMap<Position, Parcel> =
-        new MultiValueHashMap();
+    private readonly parcelsByPosition: MultiValueHashMap<Position, Parcel> = new MultiValueHashMap();
 
     /**
      * @private
